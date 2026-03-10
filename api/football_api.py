@@ -131,11 +131,22 @@ def stats_from_sofascore(events, team_id):
     total_ft = sum(scored_all)
     ht_ratio = max(0.15, min(0.55, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
 
+    # Mantıklı değer sınırları (attack/defence 0.1-3.0 arası olmalı)
+    def cap(v, lo=0.2, hi=3.0):
+        return max(lo, min(hi, v))
+
+    h_att = cap(avg_sh / lig_ort if avg_sh > 0 else 1.0)
+    h_def = cap(avg_ch / lig_ort if avg_ch > 0 else 1.0)
+    a_att = cap(avg_sa / lig_ort if avg_sa > 0 else 1.0)
+    a_def = cap(avg_ca / lig_ort if avg_ca > 0 else 1.0)
+
+    print(f"AllSports stats_from [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} a_att={a_att:.3f} a_def={a_def:.3f} maç={len(scored_all)}")
+
     return {
-        "home_attack":  round(avg_sh / lig_ort if avg_sh > 0 else 1.0, 4),
-        "home_defence": round(avg_ch / lig_ort if avg_ch > 0 else 1.0, 4),
-        "away_attack":  round(avg_sa / lig_ort if avg_sa > 0 else 1.0, 4),
-        "away_defence": round(avg_ca / lig_ort if avg_ca > 0 else 1.0, 4),
+        "home_attack":  round(h_att, 4),
+        "home_defence": round(h_def, 4),
+        "away_attack":  round(a_att, 4),
+        "away_defence": round(a_def, 4),
         "general": {
             "avg_scored": avg_st, "goals_scored": sum(scored_all),
             "goals_conceded": sum(conceded_all), "btts_rate": btts,
@@ -428,11 +439,16 @@ def stats_from_bsd(matches, team_name):
     avg_xg_def = sum(xg_def_all) / len(xg_def_all)
     btts = sum(1 for a, d in zip(xg_att_all, xg_def_all) if a > 0.5 and d > 0.5) / len(xg_att_all)
 
+    def cap(v, lo=0.2, hi=3.0):
+        return max(lo, min(hi, v))
+
+    print(f"BSD xG stats_from [{team_name}]: h_att={avg_hxg_att:.3f} h_def={avg_hxg_def:.3f} a_att={avg_axg_att:.3f} a_def={avg_axg_def:.3f} maç={len(xg_att_all)}")
+
     return {
-        "home_attack":  round(avg_hxg_att / lig_ort if avg_hxg_att > 0 else 1.0, 4),
-        "home_defence": round(avg_hxg_def / lig_ort if avg_hxg_def > 0 else 1.0, 4),
-        "away_attack":  round(avg_axg_att / lig_ort if avg_axg_att > 0 else 1.0, 4),
-        "away_defence": round(avg_axg_def / lig_ort if avg_axg_def > 0 else 1.0, 4),
+        "home_attack":  round(cap(avg_hxg_att / lig_ort if avg_hxg_att > 0 else 1.0), 4),
+        "home_defence": round(cap(avg_hxg_def / lig_ort if avg_hxg_def > 0 else 1.0), 4),
+        "away_attack":  round(cap(avg_axg_att / lig_ort if avg_axg_att > 0 else 1.0), 4),
+        "away_defence": round(cap(avg_axg_def / lig_ort if avg_axg_def > 0 else 1.0), 4),
         "general": {
             "avg_scored": avg_xg_att, "goals_scored": round(sum(xg_att_all), 2),
             "goals_conceded": round(sum(xg_def_all), 2), "btts_rate": btts,
@@ -600,11 +616,22 @@ def stats_from_allsports(matches, team_id):
     btts = sum(1 for s, c in zip(scored_all, conceded_all) if s > 0 and c > 0) / len(scored_all)
     total_ft = sum(scored_all)
     ht_ratio = max(0.15, min(0.55, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
+    # Mantıklı değer sınırları (attack/defence 0.1-3.0 arası olmalı)
+    def cap(v, lo=0.2, hi=3.0):
+        return max(lo, min(hi, v))
+
+    h_att = cap(avg_sh / lig_ort if avg_sh > 0 else 1.0)
+    h_def = cap(avg_ch / lig_ort if avg_ch > 0 else 1.0)
+    a_att = cap(avg_sa / lig_ort if avg_sa > 0 else 1.0)
+    a_def = cap(avg_ca / lig_ort if avg_ca > 0 else 1.0)
+
+    print(f"AllSports stats_from [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} a_att={a_att:.3f} a_def={a_def:.3f} maç={len(scored_all)}")
+
     return {
-        "home_attack":  round(avg_sh / lig_ort if avg_sh > 0 else 1.0, 4),
-        "home_defence": round(avg_ch / lig_ort if avg_ch > 0 else 1.0, 4),
-        "away_attack":  round(avg_sa / lig_ort if avg_sa > 0 else 1.0, 4),
-        "away_defence": round(avg_ca / lig_ort if avg_ca > 0 else 1.0, 4),
+        "home_attack":  round(h_att, 4),
+        "home_defence": round(h_def, 4),
+        "away_attack":  round(a_att, 4),
+        "away_defence": round(a_def, 4),
         "general": {
             "avg_scored": avg_st, "goals_scored": sum(scored_all),
             "goals_conceded": sum(conceded_all), "btts_rate": btts,
