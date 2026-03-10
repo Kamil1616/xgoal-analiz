@@ -255,11 +255,6 @@ def api_signals():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/test-sofascore")
-def test_sofascore():
-    from api.football_api import get_team_stats_sofascore
-    result = get_team_stats_sofascore("Arsenal")
-    return jsonify({"result": result, "ok": result is not None})
 
 @app.route("/api/clear-cache", methods=["POST","GET"])
 def clear_cache():
