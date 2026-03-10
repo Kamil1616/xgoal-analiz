@@ -88,6 +88,11 @@ def api_analyze(fixture_id):
         home_is_default = home_stats["general"]["goals_scored"] == 27
         away_is_default = away_stats["general"]["goals_scored"] == 27
 
+        # BSD oranlarını fixture'dan al
+        odds_home = fix.get("odds_home")
+        odds_draw = fix.get("odds_draw")
+        odds_away = fix.get("odds_away")
+
         analysis = run_analysis(
             home_stats_general=home_stats["general"],
             home_stats_home=home_stats["home"],
@@ -95,6 +100,9 @@ def api_analyze(fixture_id):
             away_stats_away=away_stats["away"],
             home_stats=home_stats,
             away_stats=away_stats,
+            odds_home=odds_home,
+            odds_draw=odds_draw,
+            odds_away=odds_away,
         )
         analysis["data_warning"] = home_is_default or away_is_default
         cache.set(analysis_key, analysis)
