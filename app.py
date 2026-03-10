@@ -36,8 +36,8 @@ def get_fixtures_for_date(date_str):
             "home_team_name": teams.get("home", {}).get("name"),
             "away_team_id": teams.get("away", {}).get("id"),
             "away_team_name": teams.get("away", {}).get("name"),
-            "home_goals": goals.get("home"),
-            "away_goals": goals.get("away"),
+            "home_goals": goals.get("home") if fix.get("status", {}).get("short") != "NS" else None,
+            "away_goals": goals.get("away") if fix.get("status", {}).get("short") != "NS" else None,
 
             "league_id": league.get("id"),
             "league_name": league.get("name"),
@@ -220,6 +220,20 @@ def clear_cache():
         os.makedirs(cache_dir, exist_ok=True)
     return jsonify({"status": "ok", "message": "Cache temizlendi"})
 
+
+@app.route("/api/test-bsd")
+def api_test_bsd():
+    from api.football_api import get_bsd_raw
+    from datetime import datetime, timedelta
+    today = datetime.now().strftime("%Y-%m-%d")
+    from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    data, status = get_bsd_raw(from_date, today)
+    if data is None:
+        return jsonify({"error": str(status)}), 500
+    events = data if isinstance(data, list) else data.get("results", [])
+    # İlk 2 maçı döndür
+    sample = events[:2] if events else []
+    return jsonify({"count": len(events), "sample": sample})
 
 @app.route("/api/debug")
 def api_debug():
