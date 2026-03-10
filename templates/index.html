@@ -71,7 +71,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .fixture-header:hover{background:rgba(255,255,255,0.02)}
 
 /* Logo */
-.team-logo{width:28px;height:28px;border-radius:50%;object-fit:contain;background:var(--surface2);flex-shrink:0;min-width:28px}
+.team-logo{width:28px;height:28px;border-radius:50%;object-fit:contain;background:var(--surface2);flex-shrink:0}
 .team-logo-fallback{width:28px;height:28px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--muted);flex-shrink:0}
 
 .teams-block{flex:1;min-width:0;display:flex;align-items:center;gap:6px}
@@ -386,4 +386,193 @@ function buildFixtureCard(f) {
   var hasScore = f.home_goals!==null && f.home_goals!==undefined && f.away_goals!==null && f.away_goals!==undefined;
 
   var t = '--:--';
-  if
+  if(f.date){
+    var d = new Date(f.date);
+    // AllSports UTC+0 gonderiyor, Turkiye UTC+3, fark +3 saat
+    d = new Date(d.getTime() + 3*60*60*1000);
+    var hh = String(d.getUTCHours()).padStart(2,'0');
+    var mm = String(d.getUTCMinutes()).padStart(2,'0');
+    t = hh + ':' + mm;
+  }
+  var timeStr = isLive && f.elapsed ? '\u25CF '+f.elapsed+"'" : t;
+  var timeClass = isLive ? 'match-time live' : 'match-time';
+
+  var homeLogoUrl = 'https://media.api-sports.io/football/teams/' + f.home_team_id + '.png';
+  var awayLogoUrl = 'https://media.api-sports.io/football/teams/' + f.away_team_id + '.png';
+
+  var sigBadges = signals.map(function(s){
+    return '<span class="signal-badge iy">'+s.market+'</span>';
+  }).join('') + msSignals.map(function(s){
+    return '<span class="signal-badge ms">MS:'+s.outcome+'</span>';
+  }).join('');
+
+  return '<div class="fixture-card' + (hasSignal?' has-signal':'') + '" id="card-'+f.fixture_id+'">' +
+    '<div class="fixture-header">' +
+      '<img class="team-logo" src="'+homeLogoUrl+'" alt="" onerror="this.style.display=\'none\'">' +
+      '<div class="teams-block">' +
+        '<span class="team-name">'+esc(f.home_team_name||'?')+'</span>' +
+        '<div class="match-center">' +
+          '<span class="'+timeClass+'">'+timeStr+'</span>' +
+          (hasScore ? '<span class="match-score">'+f.home_goals+' - '+f.away_goals+'</span>' : '<span class="vs-text">VS</span>') +
+        '</div>' +
+        '<span class="team-name away">'+esc(f.away_team_name||'?')+'</span>' +
+      '</div>' +
+      '<img class="team-logo" src="'+awayLogoUrl+'" alt="" onerror="this.style.display=\'none\'">' +
+    '</div>' +
+    '<div class="card-meta">' +
+      '<span class="league-badge">'+esc(f.league_name||'')+'</span>' +
+      '<div class="signals-row">'+sigBadges+'</div>' +
+    '</div>' +
+    '<div class="analysis-panel" id="panel-'+f.fixture_id+'"></div>' +
+  '</div>';
+}
+
+// ─── OPEN ANALYSIS ────────────────────────────────────────────────────────────
+function openAnalysis(fid) {
+  var panel = document.getElementById('panel-'+fid);
+  if(!panel) return;
+  if(panel.classList.contains('open')){
+    panel.classList.remove('open');
+    panel.innerHTML = '';
+    return;
+  }
+  if(analysisCache[fid]){
+    var fix = allFixtures.find(function(f){return f.fixture_id===fid;}) || {};
+    panel.innerHTML = buildAnalysisHtml(fix, analysisCache[fid]);
+    panel.classList.add('open');
+  } else {
+    panel.innerHTML = '<div class="loading"><span class="spinner"></span>Analiz yükleniyor...</div>';
+    panel.classList.add('open');
+    loadAnalysis(fid, currentDate);
+  }
+}
+
+async function loadAnalysis(fid, date) {
+  try {
+    var r = await fetch('/api/analyze/'+fid+'?date='+date);
+    var data = await r.json();
+    if(data.analysis){
+      analysisCache[fid] = data.analysis;
+      var panel = document.getElementById('panel-'+fid);
+      var card = document.getElementById('card-'+fid);
+      var fix = allFixtures.find(function(f){return f.fixture_id===fid;}) || data.fixture || {};
+      if(panel && panel.classList.contains('open')){
+        panel.innerHTML = buildAnalysisHtml(fix, data.analysis);
+      }
+      var sigs = data.analysis.iy_signals||[];
+      var msSigs = data.analysis.ms_signals||[];
+      if(card && (sigs.length>0||msSigs.length>0)) card.classList.add('has-signal');
+      // badge güncelle
+      var metaDiv = card ? card.querySelector('.signals-row') : null;
+      if(metaDiv){
+        metaDiv.innerHTML = sigs.map(function(s){return '<span class="signal-badge iy">'+s.market+'</span>';}).join('') +
+          msSigs.map(function(s){return '<span class="signal-badge ms">MS:'+s.outcome+'</span>';}).join('');
+      }
+      updateStatsBar(allFixtures);
+    } else {
+      var panel = document.getElementById('panel-'+fid);
+      if(panel) panel.innerHTML = '<div class="error-msg">Analiz alınamadı</div>';
+    }
+  } catch(e) {
+    var panel = document.getElementById('panel-'+fid);
+    if(panel) panel.innerHTML = '<div class="error-msg">Hata: '+e.message+'</div>';
+  }
+}
+
+// ─── BUILD ANALYSIS HTML ─────────────────────────────────────────────────────
+function buildAnalysisHtml(fix, analysis) {
+  var html = '<div class="analysis-inner">';
+
+  // Warning
+  if(analysis.data_warning){
+    html += '<div class="data-warn">\u26A0 Takım istatistiği alınamadı, varsayılan değerler kullanıldı</div>';
+  }
+
+  // Lambda chips
+  html += '<div class="lambda-row">' +
+    chip(analysis.lambda_home, '\u03BB Ev') +
+    chip(analysis.lambda_away, '\u03BB Dep') +
+    chip(analysis.lambda_total, '\u03BB Total') +
+    chip(analysis.lambda_iy, '\u03BB IY') +
+  '</div>';
+
+  // ── MODÜL C: Maç Sonucu 1X2 ──
+  html += '<div class="mod-title">MODÜL C — MAÇ SONUCU (1X2)</div>';
+  html += '<div class="ms-grid">';
+  var msLabels = {'1':'Ev Kazanır','X':'Beraberlik','2':'Dep Kazanır'};
+  var msColors = {'1':'var(--accent)','X':'var(--warn)','2':'var(--accent3)'};
+  (analysis.ms_results||[]).forEach(function(r){
+    var hasSig = (analysis.ms_signals||[]).some(function(s){return s.outcome===r.outcome;});
+    html += '<div class="ms-card'+(hasSig?' signal-card':'')+'">' +
+      '<div class="ms-outcome" style="color:'+msColors[r.outcome]+'">'+r.outcome+'</div>' +
+      '<div class="ms-prob" style="color:'+msColors[r.outcome]+'">%'+r.probability+'</div>' +
+      '<div class="ms-odd">Oran: '+r.model_odd+'</div>' +
+      '<div class="ms-signal-tag">'+(hasSig?'\u26A1 SİNYAL':'')+'</div>' +
+    '</div>';
+  });
+  html += '</div>';
+
+  // ── MODÜL A: IY/MS Tablosu ──
+  html += '<div class="mod-title">MODÜL A — IY/MS TABLOSU</div>';
+  html += '<table class="iyms-table"><thead><tr>' +
+    '<th>SEÇİM</th><th>OLASILIK</th><th>MODEL ORAN</th><th></th>' +
+  '</tr></thead><tbody>';
+  (analysis.iyms_results||[]).forEach(function(r, i){
+    var cls = r.rank===1?'rank1':r.rank===2?'rank2':'';
+    if(r.divider) cls += ' divider';
+    var barColor = r.rank===1?'':'b'+(r.rank===2?'2':'3');
+    var barW = Math.min(100, r.probability*2.5);
+    html += '<tr class="'+cls+'">' +
+      '<td class="sel">'+r.selection+'</td>' +
+      '<td>%'+r.probability+'</td>' +
+      '<td style="font-family:IBM Plex Mono,monospace">'+r.model_odd+'</td>' +
+      '<td><span class="prob-bar-wrap"><span class="prob-bar '+barColor+'" style="width:'+barW+'%"></span></span></td>' +
+    '</tr>';
+  });
+  html += '</tbody></table>';
+
+  // ── MODÜL B: IY Alt/Üst ──
+  html += '<div class="mod-title">MODÜL B — IY ALT/ÜST</div>';
+  html += '<div class="iy-over-grid">';
+  var iyThresh = {'0.5':65,'1.5':54,'2.5':35,'3.5':22};
+  var iyColors = {'0.5':'var(--accent)','1.5':'var(--accent2)','2.5':'var(--warn)','3.5':'var(--accent3)'};
+  ['0.5','1.5','2.5','3.5'].forEach(function(k){
+    var prob = (analysis.iy_over_probs||{})[k] || 0;
+    var thresh = iyThresh[k];
+    var hasSig = prob >= thresh;
+    var barW = Math.min(100, prob);
+    html += '<div class="iy-over-card'+(hasSig?' signal-card':'')+'">' +
+      '<div class="iy-over-label">IY '+k+' Üst</div>' +
+      '<div class="iy-over-prob" style="color:'+iyColors[k]+'">%'+prob+'</div>' +
+      '<div class="iy-over-bar"><div class="iy-over-bar-fill" style="width:'+barW+'%;background:'+iyColors[k]+'"></div></div>' +
+      (hasSig?'<div class="iy-signal-tag">\u26A1 SİNYAL (eş: %'+thresh+')</div>':'') +
+    '</div>';
+  });
+  html += '</div>';
+
+  // ── En Olası IY ve MS Skorları ──
+  var topIYMS = (analysis.iyms_results||[]).slice(0,3);
+  if(topIYMS.length){
+    html += '<div class="mod-title">IY/MS EN OLASILAR</div>';
+    html += '<div class="scores-grid">';
+    topIYMS.forEach(function(r){
+      html += '<div class="score-chip"><div class="sc">'+r.selection+'</div><div class="sp">%'+r.probability+'</div></div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>'; // analysis-inner
+  return html;
+}
+
+function chip(val, label){
+  return '<div class="lambda-chip"><div class="val">'+val+'</div><div class="lbl">'+label+'</div></div>';
+}
+
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+</script>
+</body>
+</html>
