@@ -57,9 +57,19 @@ def index():
 @app.route("/api/fixtures")
 def api_fixtures():
     date = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    download = request.args.get("download", "0")
     try:
         fixtures = get_fixtures_for_date(date)
-        return jsonify({"fixtures": fixtures, "date": date})
+        data = {"fixtures": fixtures, "date": date, "count": len(fixtures)}
+        if download == "1":
+            from flask import Response
+            import json
+            return Response(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                mimetype="application/json",
+                headers={"Content-Disposition": f"attachment; filename=fixtures_{date}.json"}
+            )
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e), "fixtures": []}), 500
 
@@ -114,6 +124,7 @@ def api_analyze(fixture_id):
 @app.route("/api/analyze-all")
 def api_analyze_all():
     date = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
+    download = request.args.get("download", "0")
     try:
         fixtures = get_fixtures_for_date(date)
         results = []
@@ -136,16 +147,45 @@ def api_analyze_all():
                     home_stats=home_stats,
                     away_stats=away_stats,
                 )
+                analysis["data_warning"] = home_stats["general"]["goals_scored"] == 27
+                analysis["home_stats"] = {
+                    "team": fix.get("home_team_name"),
+                    "home_attack": home_stats["home_attack"],
+                    "home_defence": home_stats["home_defence"],
+                    "away_attack": home_stats["away_attack"],
+                    "away_defence": home_stats["away_defence"],
+                    "avg_scored": home_stats["general"]["avg_scored"],
+                    "btts_rate": home_stats["general"]["btts_rate"],
+                    "ht_goal_ratio": home_stats["general"]["ht_goal_ratio"],
+                }
+                analysis["away_stats"] = {
+                    "team": fix.get("away_team_name"),
+                    "home_attack": away_stats["home_attack"],
+                    "home_defence": away_stats["home_defence"],
+                    "away_attack": away_stats["away_attack"],
+                    "away_defence": away_stats["away_defence"],
+                    "avg_scored": away_stats["general"]["avg_scored"],
+                    "btts_rate": away_stats["general"]["btts_rate"],
+                    "ht_goal_ratio": away_stats["general"]["ht_goal_ratio"],
+                }
                 cache.set(analysis_key, analysis)
                 results.append({"fixture": fix, "analysis": analysis})
             except:
                 continue
-        return jsonify({"results": results, "date": date})
+
+        data = {"date": date, "count": len(results), "results": results}
+
+        if download == "1":
+            from flask import Response
+            import json
+            return Response(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                mimetype="application/json",
+                headers={"Content-Disposition": f"attachment; filename=analiz_{date}.json"}
+            )
+        return jsonify(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-
 @app.route("/api/signals")
 def api_signals():
     date = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
