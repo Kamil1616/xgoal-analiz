@@ -394,25 +394,143 @@ def get_team_stats_sofascore(team_name):
         print(f"Sofascore team stats error: {e}")
         return None
 
-# ─── ANA STATS FONKSİYONU: BSD → SOFASCORE → DEFAULT ─────────────────────────
+# ─── ANA STATS FONKSİYONU: BSD → SOFASCORE → ALLSPORTS → DEFAULT ─────────────
+def get_team_stats_allsports(team_id):
+    """AllSports'tan takım stats çek"""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        from_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        r = requests.get(AS_URL, params={
+            "met": "Fixtures", "APIkey": AS_KEY,
+            "teamId": team_id, "from": from_date, "to": today
+        }, timeout=30)
+        if r.status_code != 200:
+            return None
+        matches = r.json().get("result", []) or []
+        tid = int(team_id)
+        finished = [
+            m for m in matches
+            if m.get("event_status") == "Finished"
+            and m.get("event_final_result")
+            and (int(m.get("home_team_key", 0)) == tid or int(m.get("away_team_key", 0)) == tid)
+        ]
+        finished = finished[-10:]
+        if len(finished) < 4:
+            print(f"AllSports: {team_id} için yetersiz maç ({len(finished)})")
+            return None
+        return stats_from_allsports(finished, team_id)
+    except Exception as e:
+        print(f"AllSports team stats error: {e}")
+        return None
+
+def stats_from_allsports(matches, team_id):
+    """AllSports maçlarından stats hesapla"""
+    home_scored, home_conceded = [], []
+    away_scored, away_conceded = [], []
+    scored_all, conceded_all, ht_scored_all = [], [], []
+    tid = int(team_id)
+
+    for m in matches:
+        try:
+            home_id = int(m.get("home_team_key", 0))
+            away_id = int(m.get("away_team_key", 0))
+        except:
+            continue
+        if home_id != tid and away_id != tid:
+            continue
+        is_home = (home_id == tid)
+        final = m.get("event_final_result", "")
+        if not final or " - " not in final:
+            continue
+        parts = final.split(" - ")
+        try:
+            hg, ag = int(parts[0].strip()), int(parts[1].strip())
+        except:
+            continue
+        gf = hg if is_home else ag
+        ga = ag if is_home else hg
+        ht = m.get("event_halftime_result", "")
+        ht_gf = 0
+        if ht and " - " in ht:
+            ht_parts = ht.split(" - ")
+            try:
+                ht_gf = int(ht_parts[0].strip()) if is_home else int(ht_parts[1].strip())
+            except:
+                pass
+        scored_all.append(gf)
+        conceded_all.append(ga)
+        ht_scored_all.append(ht_gf)
+        if is_home:
+            home_scored.append(gf)
+            home_conceded.append(ga)
+        else:
+            away_scored.append(gf)
+            away_conceded.append(ga)
+
+    if len(scored_all) < 4:
+        return None
+
+    avg_sh = sum(home_scored) / max(len(home_scored), 1)
+    avg_sa = sum(away_scored) / max(len(away_scored), 1)
+    avg_ch = sum(home_conceded) / max(len(home_conceded), 1)
+    avg_ca = sum(away_conceded) / max(len(away_conceded), 1)
+    avg_st = sum(scored_all) / len(scored_all)
+    avg_ct = sum(conceded_all) / len(conceded_all)
+    btts = sum(1 for s, c in zip(scored_all, conceded_all) if s > 0 and c > 0) / len(scored_all)
+    total_ft = sum(scored_all)
+    ht_ratio = max(0.15, min(0.55, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
+
+    # Attack: 0.3-2.5, Defence: 0.4-2.5 (defence min 0.4 - çok iyi savunma etkisini sınırla)
+    def cap_att(v): return max(0.3, min(2.5, v))
+    def cap_def(v): return max(0.4, min(2.5, v))
+
+    h_att = cap_att(avg_sh / LIG_ORT if avg_sh > 0 else 1.0)
+    h_def = cap_def(avg_ch / LIG_ORT if avg_ch > 0 else 1.0)
+    a_att = cap_att(avg_sa / LIG_ORT if avg_sa > 0 else 1.0)
+    a_def = cap_def(avg_ca / LIG_ORT if avg_ca > 0 else 1.0)
+
+    print(f"AllSports [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} a_att={a_att:.3f} a_def={a_def:.3f} maç={len(scored_all)}")
+
+    return {
+        "home_attack":  round(h_att, 4),
+        "home_defence": round(h_def, 4),
+        "away_attack":  round(a_att, 4),
+        "away_defence": round(a_def, 4),
+        "general": {
+            "avg_scored": avg_st, "goals_scored": sum(scored_all),
+            "goals_conceded": sum(conceded_all), "btts_rate": btts,
+            "ht_goal_ratio": ht_ratio, "tempo_score": avg_st + avg_ct
+        },
+        "home": {"avg_scored": avg_sh, "goals_scored": sum(home_scored), "goals_conceded": sum(home_conceded)},
+        "away": {"avg_scored": avg_sa, "goals_scored": sum(away_scored), "goals_conceded": sum(away_conceded)}
+    }
+
 def get_team_stats(team_id, league_id, season, team_name=None):
     """
-    Öncelik: BSD xG → Sofascore → Default
-    AllSports stats tamamen kaldırıldı.
+    Öncelik: BSD xG → Sofascore → AllSports → Default
     """
+    # 1. BSD dene
     if team_name:
-        # 1. BSD dene
         stats = get_team_stats_bsd(team_name)
         if stats:
             print(f"✓ BSD stats: {team_name}")
             return stats
-        # 2. Sofascore dene
+
+    # 2. Sofascore dene
+    if team_name:
         stats = get_team_stats_sofascore(team_name)
         if stats:
             print(f"✓ Sofascore stats: {team_name}")
             return stats
 
-    print(f"⚠ Default stats kullanıldı: {team_name or team_id}")
+    # 3. AllSports dene (teamId ile)
+    if team_id:
+        stats = get_team_stats_allsports(team_id)
+        if stats:
+            print(f"✓ AllSports stats: {team_id} ({team_name})")
+            return stats
+
+    print(f"⚠ Default stats: {team_name or team_id}")
     return default_stats()
 
 # ─── BSD DEBUG ────────────────────────────────────────────────────────────────
