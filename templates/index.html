@@ -386,12 +386,16 @@ function buildFixtureCard(f) {
   var hasScore = f.home_goals!==null && f.home_goals!==undefined && f.away_goals!==null && f.away_goals!==undefined;
 
   var t = '--:--';
-  if(f.date){
+  if(f.time){
+    // Sofascore UTC+3 formatında geliyor, direkt local saat kullan
+    var d = new Date(f.time);
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mm = String(d.getMinutes()).padStart(2,'0');
+    t = hh + ':' + mm;
+  } else if(f.date){
     var d = new Date(f.date);
-    // AllSports UTC+0 gonderiyor, Turkiye UTC+3, fark +3 saat
-    d = new Date(d.getTime() + 3*60*60*1000);
-    var hh = String(d.getUTCHours()).padStart(2,'0');
-    var mm = String(d.getUTCMinutes()).padStart(2,'0');
+    var hh = String(d.getHours()).padStart(2,'0');
+    var mm = String(d.getMinutes()).padStart(2,'0');
     t = hh + ':' + mm;
   }
   var timeStr = isLive && f.elapsed ? '\u25CF '+f.elapsed+"'" : t;
