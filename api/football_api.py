@@ -232,11 +232,66 @@ def get_fixtures_allsports(date):
         print(f"AllSports fixtures error: {e}")
         return []
 
+def get_bsd_odds_map(date):
+    """BSD den o günün maç oranlarını çek, api_id bazlı map döndür"""
+    try:
+        r = requests.get(f"{BSD_URL}/events/", headers=BSD_HEADERS, params={
+            "date_from": date, "date_to": date
+        }, timeout=20)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        events = data if isinstance(data, list) else data.get("results", [])
+        odds_map = {}
+        for e in events:
+            home = str(e.get("home_team") or "").lower().strip()
+            away = str(e.get("away_team") or "").lower().strip()
+            key = f"{home}|{away}"
+            odds_map[key] = {
+                "odds_home": e.get("odds_home"),
+                "odds_draw": e.get("odds_draw"),
+                "odds_away": e.get("odds_away"),
+                "odds_over_15": e.get("odds_over_15"),
+                "odds_over_25": e.get("odds_over_25"),
+                "odds_over_35": e.get("odds_over_35"),
+            }
+        return odds_map
+    except Exception as e:
+        print(f"BSD odds error: {e}")
+        return {}
+
 def get_fixtures(date):
     fixtures = get_fixtures_allsports(date)
-    if fixtures:
-        return fixtures
-    return get_fixtures_fd(date)
+    if not fixtures:
+        fixtures = get_fixtures_fd(date)
+    if not fixtures:
+        return []
+
+    # BSD oranlarını eşleştir
+    try:
+        odds_map = get_bsd_odds_map(date)
+        if odds_map:
+            for fix in fixtures:
+                home = (fix.get("home_team_name") or "").lower().strip()
+                away = (fix.get("away_team_name") or "").lower().strip()
+                # Tam eşleşme dene
+                key = f"{home}|{away}"
+                odds = odds_map.get(key)
+                # Yoksa kısmi eşleşme dene
+                if not odds:
+                    for k, v in odds_map.items():
+                        parts = k.split("|")
+                        if len(parts) == 2:
+                            bh, ba = parts
+                            if (home in bh or bh in home) and (away in ba or ba in away):
+                                odds = v
+                                break
+                if odds:
+                    fix.update(odds)
+    except Exception as e:
+        print(f"BSD odds match error: {e}")
+
+    return fixtures
 
 def get_fixtures_fd(date):
     try:
@@ -279,105 +334,191 @@ def get_bsd_raw(date_from, date_to):
     except Exception as e:
         return None, str(e)
 
-def get_team_stats_bsd(team_name):
-    """Bzzoiro Sports Data API - takım stats"""
-    if not team_name:
-        return None
+def get_bsd_events_for_team(team_name):
+    """BSD API den takım adıyla son maçları çek"""
+    name_lower = team_name.lower()
+    team_matches = []
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         from_date = (datetime.now() - timedelta(days=270)).strftime("%Y-%m-%d")
-        r = requests.get(f"{BSD_URL}/events/", headers=BSD_HEADERS, params={
-            "date_from": from_date, "date_to": today
-        }, timeout=20)
-        if r.status_code != 200:
-            print(f"BSD events error: {r.status_code}")
-            return None
-        data = r.json()
-        events = data if isinstance(data, list) else data.get("results", [])
+        page = 1
+        while len(team_matches) < 10 and page <= 6:
+            r = requests.get(f"{BSD_URL}/events/", headers=BSD_HEADERS, params={
+                "date_from": from_date, "date_to": today, "page": page
+            }, timeout=20)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            events = data if isinstance(data, list) else data.get("results", [])
+            if not events:
+                break
+            for e in events:
+                home_name = str(e.get("home_team") or "").lower()
+                away_name = str(e.get("away_team") or "").lower()
+                if name_lower in home_name or home_name in name_lower or                    name_lower in away_name or away_name in name_lower:
+                    team_matches.append(e)
+            page += 1
+    except Exception as e:
+        print(f"BSD fetch error: {e}")
+    return team_matches
 
-        name_lower = team_name.lower()
-        team_matches = []
-        for e in events:
-            # home_team/away_team string, home_team_obj/away_team_obj dict
-            home_name = str(e.get("home_team") or "").lower()
-            away_name = str(e.get("away_team") or "").lower()
-            if name_lower in home_name or home_name in name_lower or                name_lower in away_name or away_name in name_lower:
-                team_matches.append(e)
-        if len(team_matches) < 4:
+def get_team_stats_bsd(team_name):
+    """BSD xG bazlı takım stats"""
+    if not team_name:
+        return None
+    try:
+        matches = get_bsd_events_for_team(team_name)
+        if len(matches) < 4:
             return None
-        return stats_from_bsd(team_matches, team_name)
+        return stats_from_bsd(matches, team_name)
     except Exception as e:
         print(f"BSD team stats error: {e}")
         return None
 
 def stats_from_bsd(matches, team_name):
-    """BSD maçlarından stats hesapla"""
-    home_scored, home_conceded = [], []
-    away_scored, away_conceded = [], []
-    scored_all, conceded_all, ht_scored_all = [], [], []
+    """BSD xG verilerinden stats hesapla"""
+    home_xg_att, home_xg_def = [], []
+    away_xg_att, away_xg_def = [], []
+    xg_att_all, xg_def_all = [], []
+    scored_all = []
     name_lower = team_name.lower()
-    finished = [m for m in matches if str(m.get("status","")).lower() in ("finished","ft")]
-    finished = finished[-10:]
+
+    finished = [m for m in matches if str(m.get("status","")).lower() == "finished"]
+    finished = sorted(finished, key=lambda x: x.get("event_date",""))[-10:]
+
     for m in finished:
         home_name = str(m.get("home_team") or "").lower()
         is_home = name_lower in home_name or home_name in name_lower
-        hg = m.get("home_score") or 0
-        ag = m.get("away_score") or 0
-        ht_h = 0
-        ht_a = 0
+        hxg = m.get("actual_home_xg")
+        axg = m.get("actual_away_xg")
+        if hxg is None or axg is None:
+            continue
         try:
-            hg, ag, ht_h, ht_a = int(hg), int(ag), int(ht_h), int(ht_a)
+            hxg, axg = float(hxg), float(axg)
         except:
             continue
+        hg = m.get("home_score") or 0
+        ag = m.get("away_score") or 0
+        try:
+            hg, ag = int(hg), int(ag)
+        except:
+            hg, ag = 0, 0
+        xg_for = hxg if is_home else axg
+        xg_against = axg if is_home else hxg
         gf = hg if is_home else ag
-        ga = ag if is_home else hg
-        ht_gf = ht_h if is_home else ht_a
+        xg_att_all.append(xg_for)
+        xg_def_all.append(xg_against)
         scored_all.append(gf)
-        conceded_all.append(ga)
-        ht_scored_all.append(ht_gf)
         if is_home:
-            home_scored.append(gf); home_conceded.append(ga)
+            home_xg_att.append(xg_for)
+            home_xg_def.append(xg_against)
         else:
-            away_scored.append(gf); away_conceded.append(ga)
-    if len(scored_all) < 4:
+            away_xg_att.append(xg_for)
+            away_xg_def.append(xg_against)
+
+    if len(xg_att_all) < 4:
         return None
+
     lig_ort = 1.35
-    avg_sh = sum(home_scored) / max(len(home_scored), 1)
-    avg_sa = sum(away_scored) / max(len(away_scored), 1)
-    avg_ch = sum(home_conceded) / max(len(home_conceded), 1)
-    avg_ca = sum(away_conceded) / max(len(away_conceded), 1)
-    avg_st = sum(scored_all) / len(scored_all)
-    avg_ct = sum(conceded_all) / len(conceded_all)
-    btts = sum(1 for s, c in zip(scored_all, conceded_all) if s > 0 and c > 0) / len(scored_all)
-    total_ft = sum(scored_all)
-    ht_ratio = max(0.15, min(0.55, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
+    avg_hxg_att = sum(home_xg_att) / max(len(home_xg_att), 1)
+    avg_axg_att = sum(away_xg_att) / max(len(away_xg_att), 1)
+    avg_hxg_def = sum(home_xg_def) / max(len(home_xg_def), 1)
+    avg_axg_def = sum(away_xg_def) / max(len(away_xg_def), 1)
+    avg_xg_att = sum(xg_att_all) / len(xg_att_all)
+    avg_xg_def = sum(xg_def_all) / len(xg_def_all)
+    btts = sum(1 for a, d in zip(xg_att_all, xg_def_all) if a > 0.5 and d > 0.5) / len(xg_att_all)
+
     return {
-        "home_attack":  round(avg_sh / lig_ort if avg_sh > 0 else 1.0, 4),
-        "home_defence": round(avg_ch / lig_ort if avg_ch > 0 else 1.0, 4),
-        "away_attack":  round(avg_sa / lig_ort if avg_sa > 0 else 1.0, 4),
-        "away_defence": round(avg_ca / lig_ort if avg_ca > 0 else 1.0, 4),
+        "home_attack":  round(avg_hxg_att / lig_ort if avg_hxg_att > 0 else 1.0, 4),
+        "home_defence": round(avg_hxg_def / lig_ort if avg_hxg_def > 0 else 1.0, 4),
+        "away_attack":  round(avg_axg_att / lig_ort if avg_axg_att > 0 else 1.0, 4),
+        "away_defence": round(avg_axg_def / lig_ort if avg_axg_def > 0 else 1.0, 4),
         "general": {
-            "avg_scored": avg_st, "goals_scored": sum(scored_all),
-            "goals_conceded": sum(conceded_all), "btts_rate": btts,
-            "ht_goal_ratio": ht_ratio, "tempo_score": avg_st + avg_ct
+            "avg_scored": avg_xg_att, "goals_scored": round(sum(xg_att_all), 2),
+            "goals_conceded": round(sum(xg_def_all), 2), "btts_rate": btts,
+            "ht_goal_ratio": 0.27, "tempo_score": avg_xg_att + avg_xg_def
         },
-        "home": {"avg_scored": avg_sh, "goals_scored": sum(home_scored), "goals_conceded": sum(home_conceded)},
-        "away": {"avg_scored": avg_sa, "goals_scored": sum(away_scored), "goals_conceded": sum(away_conceded)}
+        "home": {"avg_scored": avg_hxg_att, "goals_scored": round(sum(home_xg_att), 2), "goals_conceded": round(sum(home_xg_def), 2)},
+        "away": {"avg_scored": avg_axg_att, "goals_scored": round(sum(away_xg_att), 2), "goals_conceded": round(sum(away_xg_def), 2)}
+    }
+def merge_stats_weighted(recent_stats, all_stats, recent_w=0.65, old_w=0.35):
+    """Son 5 maç %65, eski maçlar %35 ağırlıklı birleştir"""
+    if recent_stats is None:
+        return all_stats
+    if all_stats is None:
+        return recent_stats
+    def blend(a, b, wa, wb):
+        return round(a * wa + b * wb, 4)
+    return {
+        "home_attack":  blend(recent_stats["home_attack"],  all_stats["home_attack"],  recent_w, old_w),
+        "home_defence": blend(recent_stats["home_defence"], all_stats["home_defence"], recent_w, old_w),
+        "away_attack":  blend(recent_stats["away_attack"],  all_stats["away_attack"],  recent_w, old_w),
+        "away_defence": blend(recent_stats["away_defence"], all_stats["away_defence"], recent_w, old_w),
+        "general": {
+            "avg_scored":    blend(recent_stats["general"]["avg_scored"],    all_stats["general"]["avg_scored"],    recent_w, old_w),
+            "goals_scored":  recent_stats["general"]["goals_scored"],
+            "goals_conceded":recent_stats["general"]["goals_conceded"],
+            "btts_rate":     blend(recent_stats["general"]["btts_rate"],     all_stats["general"]["btts_rate"],     recent_w, old_w),
+            "ht_goal_ratio": blend(recent_stats["general"]["ht_goal_ratio"], all_stats["general"]["ht_goal_ratio"], recent_w, old_w),
+            "tempo_score":   blend(recent_stats["general"]["tempo_score"],   all_stats["general"]["tempo_score"],   recent_w, old_w),
+        },
+        "home": recent_stats["home"],
+        "away": recent_stats["away"],
     }
 
 def get_team_stats(team_id, league_id, season, team_name=None):
-    # Önce BSD dene (daha güvenilir)
+    """BSD xG önce, sonra AllSports. Son 5 maç ağırlıklı form."""
+    recent_stats = None
+    all_stats = None
+
+    # BSD xG ile stats
     if team_name:
-        bsd = get_team_stats_bsd(team_name)
-        if bsd:
-            print(f"BSD stats: {team_name}")
-            return bsd
+        all_stats = get_team_stats_bsd(team_name)
+        if all_stats:
+            print(f"BSD xG stats: {team_name}")
+            # Son 5 maç için ayrıca çek
+            recent_matches = get_bsd_events_for_team(team_name)
+            finished = [m for m in recent_matches if str(m.get("status","")).lower() == "finished"]
+            finished = sorted(finished, key=lambda x: x.get("event_date",""))[-5:]
+            if len(finished) >= 3:
+                recent_stats = stats_from_bsd(finished, team_name)
+            return merge_stats_weighted(recent_stats, all_stats)
+
     # BSD başarısız → AllSports
-    stats = get_team_stats_allsports(team_id)
-    if stats and stats["general"]["goals_scored"] > 0:
+    all_stats = get_team_stats_allsports(team_id)
+    if all_stats and all_stats["general"]["goals_scored"] > 0:
         print(f"AllSports stats: {team_id}")
-        return stats
+        # Son 5 maç ağırlığı AllSports'tan
+        recent_stats = get_team_stats_allsports_recent(team_id, limit=5)
+        return merge_stats_weighted(recent_stats, all_stats)
+
     return default_stats()
+
+def get_team_stats_allsports_recent(team_id, limit=5):
+    """AllSports son N maç stats"""
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        from_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
+        r = requests.get(AS_URL, params={
+            "met": "Fixtures", "APIkey": AS_KEY,
+            "teamId": team_id, "from": from_date, "to": today
+        }, timeout=30)
+        if r.status_code != 200:
+            return None
+        matches = r.json().get("result", []) or []
+        tid = int(team_id)
+        finished = [
+            m for m in matches
+            if m.get("event_status") == "Finished"
+            and m.get("event_final_result")
+            and (int(m.get("home_team_key", 0)) == tid or int(m.get("away_team_key", 0)) == tid)
+        ]
+        finished = finished[-limit:]
+        if len(finished) < 3:
+            return None
+        return stats_from_allsports(finished, team_id)
+    except:
+        return None
 
 def get_team_stats_allsports(team_id):
     try:
@@ -471,5 +612,4 @@ def stats_from_allsports(matches, team_id):
         },
         "home": {"avg_scored": avg_sh, "goals_scored": sum(home_scored), "goals_conceded": sum(home_conceded)},
         "away": {"avg_scored": avg_sa, "goals_scored": sum(away_scored), "goals_conceded": sum(away_conceded)}
-      }
-  
+    }
