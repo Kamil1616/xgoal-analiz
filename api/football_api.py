@@ -37,16 +37,28 @@ def cap_def(v): return max(0.4, min(2.5, v))
 
 # ─── SOFASCORE: FIXTURES ──────────────────────────────────────────────────────
 def get_fixtures_sofascore(date):
-    """Sofascore'dan günlük fikstür çek"""
+    """Sofascore'dan günlük fikstür çek (UTC+3 için önceki gün de dahil)"""
     try:
-        r = requests.get(
-            f"{SOFA_URL}/sport/football/scheduled-events/{date}",
-            headers=SOFA_HEADERS, timeout=15
-        )
-        if r.status_code != 200:
-            print(f"Sofascore fixtures HTTP {r.status_code}")
-            return []
-        events = r.json().get("events", [])
+        # Türkiye UTC+3 — önceki günün geç maçları da bu tarihte olabilir
+        prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        all_events = []
+        for d in [prev_date, date]:
+            r = requests.get(
+                f"{SOFA_URL}/sport/football/scheduled-events/{d}",
+                headers=SOFA_HEADERS, timeout=15
+            )
+            if r.status_code == 200:
+                all_events.extend(r.json().get("events", []))
+
+        # Sadece istenen tarihe ait maçları filtrele (UTC+3)
+        target = datetime.strptime(date, "%Y-%m-%d")
+        filtered = []
+        for e in all_events:
+            ts = e.get("startTimestamp", 0)
+            local_dt = datetime.utcfromtimestamp(ts + 10800)  # UTC+3
+            if local_dt.strftime("%Y-%m-%d") == date:
+                filtered.append(e)
+        events = filtered
         result = []
         for e in events:
             home = e.get("homeTeam", {})
@@ -73,12 +85,15 @@ def get_fixtures_sofascore(date):
             else:
                 st = "NS"
 
-            # Saat
+            # Saat (UTC+3 Türkiye = +10800 saniye)
             ts = e.get("startTimestamp", 0)
             try:
-                match_time = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                local_dt = datetime.utcfromtimestamp(ts + 10800)
+                match_time = local_dt.strftime("%Y-%m-%dT%H:%M:%S+03:00")
+                local_date = local_dt.strftime("%Y-%m-%d")
             except:
-                match_time = f"{date}T00:00:00+00:00"
+                match_time = f"{date}T00:00:00+03:00"
+                local_date = date
 
             result.append({
                 "fixture_id": e.get("id"),
