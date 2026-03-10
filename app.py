@@ -229,6 +229,27 @@ def clear_cache():
     return jsonify({"status": "ok", "message": "Cache temizlendi"})
 
 
+@app.route("/api/debug-stats")
+def api_debug_stats():
+    """Takım stats debug - ?home=TakımAdı&away=TakımAdı"""
+    home_name = request.args.get("home", "")
+    away_name = request.args.get("away", "")
+    home_id = int(request.args.get("home_id", 0))
+    away_id = int(request.args.get("away_id", 0))
+    if not home_name or not away_name:
+        return jsonify({"error": "home ve away parametresi gerekli"}), 400
+    home_stats = get_team_stats(home_id, 0, 2025, team_name=home_name)
+    away_stats = get_team_stats(away_id, 0, 2025, team_name=away_name)
+    from models.value_hunting import compute_lambdas, compute_lambda_iy
+    lh, la = compute_lambdas(home_stats, away_stats)
+    liy = compute_lambda_iy(lh, la, home_stats, away_stats)
+    return jsonify({
+        "home": {"name": home_name, "stats": home_stats},
+        "away": {"name": away_name, "stats": away_stats},
+        "lambda_home": lh, "lambda_away": la,
+        "lambda_total": round(lh+la, 3), "lambda_iy": liy
+    })
+
 @app.route("/api/test-bsd")
 def api_test_bsd():
     from api.football_api import get_bsd_raw
