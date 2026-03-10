@@ -43,17 +43,29 @@ def get_fixtures_sofascore(date):
         prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
         all_events = []
         for d in [prev_date, date]:
+            # Normal maçlar
             r = requests.get(
                 f"{SOFA_URL}/sport/football/scheduled-events/{d}",
                 headers=SOFA_HEADERS, timeout=15
             )
             if r.status_code == 200:
                 all_events.extend(r.json().get("events", []))
+            # Invertedki (gece geç bitenler)
+            r2 = requests.get(
+                f"{SOFA_URL}/sport/football/scheduled-events/{d}/inverse",
+                headers=SOFA_HEADERS, timeout=15
+            )
+            if r2.status_code == 200:
+                all_events.extend(r2.json().get("events", []))
 
-        # Sadece istenen tarihe ait maçları filtrele (UTC+3)
-        target = datetime.strptime(date, "%Y-%m-%d")
+        # Sadece istenen tarihe ait maçları filtrele (UTC+3) + duplicate temizle
+        seen_ids = set()
         filtered = []
         for e in all_events:
+            eid = e.get("id")
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
             ts = e.get("startTimestamp", 0)
             local_dt = datetime.utcfromtimestamp(ts + 10800)  # UTC+3
             if local_dt.strftime("%Y-%m-%d") == date:
