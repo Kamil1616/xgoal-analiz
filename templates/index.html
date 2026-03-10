@@ -534,7 +534,7 @@ function buildAnalysisHtml(fix, analysis) {
   // ── MODÜL B: IY Alt/Üst ──
   html += '<div class="mod-title">MODÜL B — IY ALT/ÜST</div>';
   html += '<div class="iy-over-grid">';
-  var iyThresh = {'0.5':65,'1.5':54,'2.5':35,'3.5':22};
+  var iyThresh = {'0.5':82,'1.5':75,'2.5':60,'3.5':50};
   var iyColors = {'0.5':'var(--accent)','1.5':'var(--accent2)','2.5':'var(--warn)','3.5':'var(--accent3)'};
   ['0.5','1.5','2.5','3.5'].forEach(function(k){
     var prob = (analysis.iy_over_probs||{})[k] || 0;
@@ -553,7 +553,7 @@ function buildAnalysisHtml(fix, analysis) {
   // ── MODÜL D: FT Alt/Üst ──
   html += '<div class="mod-title">MODÜL D — MAÇ SONU ALT/ÜST</div>';
   html += '<div class="iy-over-grid">';
-  var ftThresh = {'1.5':65,'2.5':50,'3.5':30};
+  var ftThresh = {'1.5':85,'2.5':75,'3.5':65};
   var ftColors = {'1.5':'var(--accent)','2.5':'var(--accent2)','3.5':'var(--warn)'};
   ['1.5','2.5','3.5'].forEach(function(k){
     var prob = (analysis.ft_over_probs||{})[k] || 0;
