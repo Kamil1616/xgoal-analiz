@@ -21,8 +21,8 @@ def default_stats():
         "away": {"avg_scored": 1.1, "goals_scored": 12, "goals_conceded": 14}
     }
 
-def cap_att(v): return max(0.3, min(2.5, v))
-def cap_def(v): return max(0.4, min(2.5, v))
+def cap_att(v): return max(0.3, min(2.0, v))
+def cap_def(v): return max(0.5, min(1.8, v))
 
 # ─── FIXTURES ─────────────────────────────────────────────────────────────────
 def get_fixtures_allsports(date):
@@ -185,7 +185,22 @@ def get_team_stats_allsports(team_id):
         if len(finished) < 4:
             print(f"AllSports: teamId={team_id} için yetersiz maç ({len(finished)})")
             return None
-        return stats_from_allsports(finished, team_id)
+        stats = stats_from_allsports(finished, team_id)
+        if stats is None:
+            return None
+        # Ham maç listesini stats'a ekle
+        stats["recent_matches"] = [
+            {
+                "date": m.get("event_date"),
+                "home_team": m.get("event_home_team"),
+                "away_team": m.get("event_away_team"),
+                "score": m.get("event_final_result"),
+                "ht_score": m.get("event_halftime_result"),
+                "league": m.get("league_name"),
+            }
+            for m in finished
+        ]
+        return stats
     except Exception as e:
         print(f"AllSports team stats error: {e}")
         return None
