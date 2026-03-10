@@ -292,6 +292,54 @@ def api_debug_stats():
         "lambda_total": round(lh+la, 3), "lambda_iy": liy
     })
 
+@app.route("/api/test-sofascore")
+def api_test_sofascore():
+    """Sofascore bağlantı testi - bugünün maçları"""
+    import requests
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Android 11; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "tr-TR,tr;q=0.9",
+        "Referer": "https://www.sofascore.com/",
+        "Origin": "https://www.sofascore.com",
+        "Cache-Control": "no-cache",
+    }
+    results = {}
+    # Test 1: Günlük maçlar
+    try:
+        r = requests.get(
+            f"https://api.sofascore.com/api/v1/sport/football/scheduled-events/{today}",
+            headers=headers, timeout=10
+        )
+        results["scheduled"] = {"status": r.status_code, "count": len(r.json().get("events", [])) if r.status_code == 200 else 0}
+    except Exception as e:
+        results["scheduled"] = {"error": str(e)}
+
+    # Test 2: Takım arama
+    try:
+        r2 = requests.get(
+            "https://api.sofascore.com/api/v1/search/all",
+            params={"q": "Galatasaray"},
+            headers=headers, timeout=10
+        )
+        results["search"] = {"status": r2.status_code, "found": len(r2.json().get("results", [])) if r2.status_code == 200 else 0}
+    except Exception as e:
+        results["search"] = {"error": str(e)}
+
+    # Test 3: Takım son maçları (Galatasaray ID: 2564)
+    try:
+        r3 = requests.get(
+            "https://api.sofascore.com/api/v1/team/2564/events/last/0",
+            headers=headers, timeout=10
+        )
+        results["team_events"] = {"status": r3.status_code, "count": len(r3.json().get("events", [])) if r3.status_code == 200 else 0}
+    except Exception as e:
+        results["team_events"] = {"error": str(e)}
+
+    return jsonify(results)
+
 @app.route("/api/test-fotmob")
 def api_test_fotmob():
     """FotMob bağlantı testi"""
