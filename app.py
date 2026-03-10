@@ -252,17 +252,31 @@ def api_debug_stats():
 
 @app.route("/api/test-bsd")
 def api_test_bsd():
+    """BSD takım adlarını listele - hangi takımlar var?"""
     from api.football_api import get_bsd_raw
     from datetime import datetime, timedelta
     today = datetime.now().strftime("%Y-%m-%d")
-    from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     data, status = get_bsd_raw(from_date, today)
     if data is None:
         return jsonify({"error": str(status)}), 500
     events = data if isinstance(data, list) else data.get("results", [])
-    # İlk 2 maçı döndür
-    sample = events[:2] if events else []
-    return jsonify({"count": len(events), "sample": sample})
+    # Tüm takım adlarını topla
+    teams = set()
+    for e in events:
+        if e.get("home_team"): teams.add(e["home_team"])
+        if e.get("away_team"): teams.add(e["away_team"])
+    # Türk takımlarını filtrele (basit heuristik)
+    tr_keywords = ["spor", "sport", "sk", "fk", "fc", "beşiktaş", "galatasaray",
+                   "fenerbahçe", "trabzon", "başak", "adana", "vanspor", "van",
+                   "istanbul", "ankara", "izmir", "bursaspor", "konyaspor"]
+    tr_teams = [t for t in teams if any(k in t.lower() for k in tr_keywords)]
+    return jsonify({
+        "total_events": len(events),
+        "total_teams": len(teams),
+        "tr_teams": sorted(tr_teams),
+        "all_teams_sample": sorted(list(teams))[:50]
+    })
 
 @app.route("/api/debug")
 def api_debug():
