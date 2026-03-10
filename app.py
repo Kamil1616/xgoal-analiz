@@ -292,6 +292,31 @@ def api_debug_stats():
         "lambda_total": round(lh+la, 3), "lambda_iy": liy
     })
 
+@app.route("/api/test-fotmob")
+def api_test_fotmob():
+    """FotMob bağlantı testi"""
+    import requests
+    try:
+        r = requests.get(
+            "https://www.fotmob.com/api/matches",
+            params={"date": "20260310"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Android 11; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
+                "Accept": "application/json",
+                "Referer": "https://www.fotmob.com/"
+            },
+            timeout=10
+        )
+        data = r.json()
+        leagues = data.get("leagues", [])
+        return jsonify({
+            "status": r.status_code,
+            "league_count": len(leagues),
+            "leagues": [l.get("name") for l in leagues[:10]]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 @app.route("/api/test-bsd")
 def api_test_bsd():
     """BSD takım adlarını listele - hangi takımlar var?"""
