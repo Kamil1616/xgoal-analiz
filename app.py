@@ -157,6 +157,7 @@ def api_analyze_all():
                     "avg_scored": home_stats["general"]["avg_scored"],
                     "btts_rate": home_stats["general"]["btts_rate"],
                     "ht_goal_ratio": home_stats["general"]["ht_goal_ratio"],
+                    "recent_matches": home_stats.get("recent_matches", []),
                 }
                 analysis["away_stats"] = {
                     "team": fix.get("away_team_name"),
@@ -167,6 +168,7 @@ def api_analyze_all():
                     "avg_scored": away_stats["general"]["avg_scored"],
                     "btts_rate": away_stats["general"]["btts_rate"],
                     "ht_goal_ratio": away_stats["general"]["ht_goal_ratio"],
+                    "recent_matches": away_stats.get("recent_matches", []),
                 }
                 cache.set(analysis_key, analysis)
                 results.append({"fixture": fix, "analysis": analysis})
