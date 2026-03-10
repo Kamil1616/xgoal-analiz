@@ -183,13 +183,16 @@ def get_sofascore_events(team_id, page=0):
         print(f"Sofascore events error: {e}")
         return []
 
-def stats_from_sofascore(events, team_id):
+def stats_from_sofascore(events, team_id, fixture_id=None):
     """Sofascore maç verilerinden stats hesapla"""
     home_scored, home_conceded = [], []
     away_scored, away_conceded = [], []
     scored_all, conceded_all, ht_scored_all = [], [], []
 
     finished = [e for e in events if e.get("status", {}).get("type") == "finished"]
+    # Analiz edilecek maçı listeden çıkar (bugünkü maç dahil olmasın)
+    if fixture_id:
+        finished = [e for e in finished if e.get("id") != fixture_id]
     finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-10:]
 
     for m in finished:
@@ -272,7 +275,7 @@ def stats_from_sofascore(events, team_id):
         "recent_matches": recent_matches,
     }
 
-def get_team_stats_sofascore(team_name, sofa_team_id=None):
+def get_team_stats_sofascore(team_name, sofa_team_id=None, fixture_id=None):
     """Sofascore'dan takım stats çek"""
     try:
         team_id = sofa_team_id or get_sofascore_team_id(team_name)
@@ -287,7 +290,7 @@ def get_team_stats_sofascore(team_name, sofa_team_id=None):
         if len(events) < 4:
             print(f"Sofascore: {team_name} yetersiz maç ({len(events)})")
             return None
-        return stats_from_sofascore(events, team_id)
+        return stats_from_sofascore(events, team_id, fixture_id=fixture_id)
     except Exception as e:
         print(f"Sofascore team stats error: {e}")
         return None
@@ -346,13 +349,13 @@ def get_fixtures_allsports(date):
         return []
 
 # ─── ANA STATS FONKSİYONU ────────────────────────────────────────────────────
-def get_team_stats(team_id, league_id, season, team_name=None, sofa_team_id=None):
+def get_team_stats(team_id, league_id, season, team_name=None, sofa_team_id=None, fixture_id=None):
     """
     Öncelik: Sofascore → Default
     """
     # Sofascore dene
     if team_name or sofa_team_id:
-        stats = get_team_stats_sofascore(team_name, sofa_team_id)
+        stats = get_team_stats_sofascore(team_name, sofa_team_id, fixture_id=fixture_id)
         if stats:
             print(f"✓ Sofascore stats: {team_name}")
             return stats
