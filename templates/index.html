@@ -227,6 +227,8 @@ function loadDate(date) {
       updateStatsBar(allFixtures);
       renderFixtures(allFixtures);
       document.getElementById('headerSub').textContent = allFixtures.length + ' maç';
+      // Arka planda tüm maçları analiz et - sinyaller hazır olsun
+      preAnalyzeAll(date);
     })
     .catch(function(e) {
       document.getElementById('fixturesContainer').innerHTML = '<div class="error-msg">Veri alınamadı: ' + e.message + '</div>';
@@ -247,6 +249,39 @@ fetch('/api/dates')
     currentDate = new Date().toISOString().split('T')[0];
     loadDate(currentDate);
   });
+
+// ─── PRE-ANALYZE ALL ─────────────────────────────────────────────────────────
+var preAnalyzeRunning = false;
+function preAnalyzeAll(date) {
+  if(preAnalyzeRunning) return;
+  preAnalyzeRunning = true;
+  fetch('/api/analyze-all?date=' + date)
+    .then(function(r){return r.json();})
+    .then(function(data) {
+      var results = data.results || [];
+      // Sinyal rozetlerini güncelle
+      results.forEach(function(item) {
+        var fix = item.fixture;
+        var analysis = item.analysis;
+        if(!fix || !analysis) return;
+        var fid = fix.fixture_id;
+        var card = document.querySelector('[data-fixture-id="' + fid + '"]');
+        if(!card) return;
+        var badges = card.querySelector('.signal-badges');
+        if(!badges) return;
+        var iySigs = analysis.iy_signals || [];
+        var msSigs = analysis.ms_signals || [];
+        var html = '';
+        iySigs.forEach(function(s){ html += '<span class="signal-badge iy">' + s.market + '</span>'; });
+        msSigs.forEach(function(s){ html += '<span class="signal-badge ms">MS:' + s.outcome + '</span>'; });
+        badges.innerHTML = html;
+      });
+      // Sinyal sayısını güncelle
+      updateStatsBar(allFixtures);
+      preAnalyzeRunning = false;
+    })
+    .catch(function() { preAnalyzeRunning = false; });
+}
 
 // ─── SIGNAL FILTER ───────────────────────────────────────────────────────────
 var liveFilterOn = false;
@@ -404,13 +439,13 @@ function buildFixtureCard(f) {
   var homeLogoUrl = 'https://media.api-sports.io/football/teams/' + f.home_team_id + '.png';
   var awayLogoUrl = 'https://media.api-sports.io/football/teams/' + f.away_team_id + '.png';
 
-  var sigBadges = signals.map(function(s){
+  var sigBadges = '<div class="signal-badges">' + signals.map(function(s){
     return '<span class="signal-badge iy">'+s.market+'</span>';
   }).join('') + msSignals.map(function(s){
     return '<span class="signal-badge ms">MS:'+s.outcome+'</span>';
-  }).join('');
+  }).join('') + '</div>';
 
-  return '<div class="fixture-card' + (hasSignal?' has-signal':'') + '" id="card-'+f.fixture_id+'">' +
+  return '<div class="fixture-card' + (hasSignal?' has-signal':'') + '" id="card-'+f.fixture_id+'" data-fixture-id="'+f.fixture_id+'">' +
     '<div class="fixture-header">' +
       '<img class="team-logo" src="'+homeLogoUrl+'" alt="" onerror="this.style.display=\'none\'">' +
       '<div class="teams-block">' +
