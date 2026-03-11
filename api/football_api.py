@@ -43,20 +43,12 @@ def get_fixtures_sofascore(date):
         prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
         all_events = []
         for d in [prev_date, date]:
-            # Normal maçlar
             r = requests.get(
                 f"{SOFA_URL}/sport/football/scheduled-events/{d}",
                 headers=SOFA_HEADERS, timeout=15
             )
             if r.status_code == 200:
                 all_events.extend(r.json().get("events", []))
-            # Invertedki (gece geç bitenler)
-            r2 = requests.get(
-                f"{SOFA_URL}/sport/football/scheduled-events/{d}/inverse",
-                headers=SOFA_HEADERS, timeout=15
-            )
-            if r2.status_code == 200:
-                all_events.extend(r2.json().get("events", []))
 
         # Sadece istenen tarihe ait maçları filtrele (UTC+3) + duplicate temizle
         seen_ids = set()
@@ -126,6 +118,60 @@ def get_fixtures_sofascore(date):
                 "country": unique_tournament.get("category", {}).get("name", ""),
                 "season": str(datetime.now().year),
             })
+        # UCL ve büyük Avrupa turnuvaları için ek çekim
+        UCL_SEASON_IDS = {
+            7: 63814,    # UEFA Champions League 2025/26
+            679: 63816,  # UEFA Europa League 2025/26
+        }
+        for tid, sid in UCL_SEASON_IDS.items():
+            try:
+                r = requests.get(
+                    f"{SOFA_URL}/unique-tournament/{tid}/season/{sid}/events/last/0",
+                    headers=SOFA_HEADERS, timeout=10
+                )
+                if r.status_code == 200:
+                    for e in r.json().get("events", []):
+                        eid = e.get("id")
+                        if eid in seen_ids:
+                            continue
+                        ts2 = e.get("startTimestamp", 0)
+                        local_dt2 = datetime.utcfromtimestamp(ts2 + 10800)
+                        if local_dt2.strftime("%Y-%m-%d") == date:
+                            seen_ids.add(eid)
+                            filtered.append(e)
+                            # Bu maçı da result'a ekle
+                            home2 = e.get("homeTeam", {})
+                            away2 = e.get("awayTeam", {})
+                            t2 = e.get("tournament", {})
+                            ut2 = t2.get("uniqueTournament", {})
+                            st2 = e.get("status", {})
+                            st2_type = st2.get("type", "notstarted")
+                            hs2 = e.get("homeScore", {})
+                            as2 = e.get("awayScore", {})
+                            ft2 = "FT" if st2_type == "finished" else ("1H" if st2_type == "inprogress" else "NS")
+                            mt2 = local_dt2.strftime("%Y-%m-%dT%H:%M:%S+03:00")
+                            result.append({
+                                "fixture_id": eid,
+                                "date": date,
+                                "time": mt2,
+                                "status": ft2,
+                                "elapsed": st2.get("description"),
+                                "home_team_id": home2.get("id"),
+                                "home_team_name": home2.get("name"),
+                                "away_team_id": away2.get("id"),
+                                "away_team_name": away2.get("name"),
+                                "home_goals": hs2.get("current"),
+                                "away_goals": as2.get("current"),
+                                "home_ht_goals": hs2.get("period1"),
+                                "away_ht_goals": as2.get("period1"),
+                                "league_id": ut2.get("id"),
+                                "league_name": t2.get("name"),
+                                "country": ut2.get("category", {}).get("name", ""),
+                                "season": str(datetime.now().year),
+                            })
+            except Exception as ex:
+                print(f"UCL fetch error: {ex}")
+
         print(f"Sofascore fixtures: {len(result)} maç ({date})")
         return result
     except Exception as e:
