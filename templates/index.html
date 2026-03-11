@@ -252,35 +252,52 @@ fetch('/api/dates')
 
 // ─── PRE-ANALYZE ALL ─────────────────────────────────────────────────────────
 var preAnalyzeRunning = false;
+var analyzeQueue = [];
+var analyzeIndex = 0;
+
 function preAnalyzeAll(date) {
   if(preAnalyzeRunning) return;
   preAnalyzeRunning = true;
-  fetch('/api/analyze-all?date=' + date)
-    .then(function(r){return r.json();})
+  analyzeQueue = allFixtures.slice();
+  analyzeIndex = 0;
+  processNextAnalyze(date);
+}
+
+function processNextAnalyze(date) {
+  if(analyzeIndex >= analyzeQueue.length) {
+    preAnalyzeRunning = false;
+    updateStatsBar(allFixtures);
+    return;
+  }
+  var fix = analyzeQueue[analyzeIndex];
+  analyzeIndex++;
+  fetch('/api/analyze/' + fix.fixture_id + '?date=' + date)
+    .then(function(r){ return r.json(); })
     .then(function(data) {
-      var results = data.results || [];
-      // Sinyal rozetlerini güncelle
-      results.forEach(function(item) {
-        var fix = item.fixture;
-        var analysis = item.analysis;
-        if(!fix || !analysis) return;
-        var fid = fix.fixture_id;
-        var card = document.querySelector('[data-fixture-id="' + fid + '"]');
-        if(!card) return;
-        var badges = card.querySelector('.signal-badges');
-        if(!badges) return;
-        var iySigs = analysis.iy_signals || [];
-        var msSigs = analysis.ms_signals || [];
-        var html = '';
-        iySigs.forEach(function(s){ html += '<span class="signal-badge iy">' + s.market + '</span>'; });
-        msSigs.forEach(function(s){ html += '<span class="signal-badge ms">MS:' + s.outcome + '</span>'; });
-        badges.innerHTML = html;
-      });
-      // Sinyal sayısını güncelle
-      updateStatsBar(allFixtures);
-      preAnalyzeRunning = false;
+      var analysis = data.analysis;
+      if(analysis) {
+        var card = document.querySelector('[data-fixture-id="' + fix.fixture_id + '"]');
+        if(card) {
+          var badges = card.querySelector('.signal-badges');
+          if(badges) {
+            var iySigs = analysis.iy_signals || [];
+            var msSigs = analysis.ms_signals || [];
+            var html = '';
+            iySigs.forEach(function(s){ html += '<span class="signal-badge iy">' + s.market + '</span>'; });
+            msSigs.forEach(function(s){ html += '<span class="signal-badge ms">MS:' + s.outcome + '</span>'; });
+            badges.innerHTML = html;
+            if(iySigs.length > 0 || msSigs.length > 0) {
+              card.classList.add('has-signal');
+            }
+          }
+        }
+      }
+      // 200ms bekle sonra sonraki maçı analiz et
+      setTimeout(function(){ processNextAnalyze(date); }, 200);
     })
-    .catch(function() { preAnalyzeRunning = false; });
+    .catch(function() {
+      setTimeout(function(){ processNextAnalyze(date); }, 200);
+    });
 }
 
 // ─── SIGNAL FILTER ───────────────────────────────────────────────────────────
