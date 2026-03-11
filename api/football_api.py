@@ -251,7 +251,7 @@ def stats_from_sofascore(events, team_id, fixture_id=None):
     # Analiz edilecek maçı listeden çıkar (bugünkü maç dahil olmasın)
     if fixture_id:
         finished = [e for e in finished if e.get("id") != fixture_id]
-    finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-10:]
+    finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-6:]
 
     for m in finished:
         home_team = m.get("homeTeam", {})
@@ -282,7 +282,7 @@ def stats_from_sofascore(events, team_id, fixture_id=None):
             away_scored.append(gf)
             away_conceded.append(ga)
 
-    if len(scored_all) < 4:
+    if len(scored_all) < 3:
         return None
 
     avg_sh = sum(home_scored) / max(len(home_scored), 1)
@@ -342,10 +342,10 @@ def get_team_stats_sofascore(team_name, sofa_team_id=None, fixture_id=None):
             return None
         time.sleep(0.3)  # Rate limit
         events = get_sofascore_events(team_id, 0)
-        if len(events) < 4:
+        if len(events) < 3:
             events2 = get_sofascore_events(team_id, 1)
             events = events2 + events
-        if len(events) < 4:
+        if len(events) < 3:
             print(f"Sofascore: {team_name} yetersiz maç ({len(events)})")
             return None
         return stats_from_sofascore(events, team_id, fixture_id=fixture_id)
