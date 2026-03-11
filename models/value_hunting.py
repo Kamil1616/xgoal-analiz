@@ -1,13 +1,13 @@
 import math
 
 DC_RHO = -0.14
-LIG_ORT = 1.35
-EV_AVANTAJI = 1.15
+LIG_ORT = 1.05
+EV_AVANTAJI = 1.03
 
 # ─── SINYAL EŞİKLERİ ──────────────────────────────────────────────────────────
-SIGNAL_THRESHOLDS = {"0.5": 0.82, "1.5": 0.75, "2.5": 0.60, "3.5": 0.50}
+SIGNAL_THRESHOLDS = {"0.5": 0.87, "1.5": 0.80, "2.5": 0.65, "3.5": 0.55}
 MS_SIGNAL_THRESHOLDS = {"1": 0.55, "X": 0.35, "2": 0.50}
-FT_OVER_THRESHOLDS = {"1.5": 0.85, "2.5": 0.75, "3.5": 0.65}
+FT_OVER_THRESHOLDS = {"1.5": 0.90, "2.5": 0.80, "3.5": 0.70}
 
 # ─── TEMEL FONKSIYONLAR ───────────────────────────────────────────────────────
 def poisson_prob(lam, k):
@@ -48,8 +48,8 @@ def compute_lambdas(home_stats, away_stats):
     lambda_home = h_att * a_def * LIG_ORT * EV_AVANTAJI
     lambda_away = a_att * h_def * LIG_ORT
 
-    lambda_home = max(0.3, min(4.0, lambda_home))
-    lambda_away = max(0.3, min(4.0, lambda_away))
+    lambda_home = max(0.3, min(3.0, lambda_home))
+    lambda_away = max(0.3, min(3.0, lambda_away))
 
     return round(lambda_home, 3), round(lambda_away, 3)
 
