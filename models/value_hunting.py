@@ -48,8 +48,8 @@ def compute_lambdas(home_stats, away_stats):
     lambda_home = h_att * a_def * LIG_ORT * EV_AVANTAJI
     lambda_away = a_att * h_def * LIG_ORT
 
-    lambda_home = max(0.3, lambda_home)
-    lambda_away = max(0.3, lambda_away)
+    lambda_home = max(0.3, min(4.0, lambda_home))
+    lambda_away = max(0.3, min(4.0, lambda_away))
 
     return round(lambda_home, 3), round(lambda_away, 3)
 
