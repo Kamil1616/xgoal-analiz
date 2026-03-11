@@ -247,7 +247,21 @@ def stats_from_sofascore(events, team_id, fixture_id=None):
     away_scored, away_conceded = [], []
     scored_all, conceded_all, ht_scored_all = [], [], []
 
-    finished = [e for e in events if e.get("status", {}).get("type") == "finished"]
+    # Kupa kelime listesi - bu turnuvalar filtrelenecek
+    CUP_KEYWORDS = ["cup", "kupa", "copa", "coupe", "pokal", "supercup", "super cup", 
+                    "fa cup", "league cup", "carabao", "friendly", "hazirlik", "superliga cup"]
+    
+    finished = []
+    for e in events:
+        if e.get("status", {}).get("type") != "finished":
+            continue
+        # Kupa maçlarını filtrele
+        t_name = e.get("tournament", {}).get("name", "").lower()
+        is_cup = any(kw in t_name for kw in CUP_KEYWORDS)
+        if is_cup:
+            continue
+        finished.append(e)
+    
     # Analiz edilecek maçı listeden çıkar (bugünkü maç dahil olmasın)
     if fixture_id:
         finished = [e for e in finished if e.get("id") != fixture_id]
