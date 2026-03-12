@@ -454,18 +454,10 @@ function buildFixtureCard(f) {
   var elapsedNum = f.elapsed ? parseInt(f.elapsed) : NaN;
   var timeStr, timeClass;
   if(isLive){
-    if(!isNaN(elapsedNum)){
-      timeStr = '\u25CF ' + elapsedNum + "'";  // canlı + dakika sayısı
-    } else if(f.elapsed){
-      // "1st half", "2nd half", "Halftime" gibi metinler
-      var el = String(f.elapsed).toLowerCase();
-      if(el.indexOf('halftime') >= 0 || el.indexOf('half time') >= 0){
-        timeStr = '\u25CF HT';
-      } else if(el.indexOf('2nd') >= 0 || el.indexOf('second') >= 0){
-        timeStr = '\u25CF 2Y';
-      } else {
-        timeStr = '\u25CF 1Y';
-      }
+    if(f.elapsed === 'HT'){
+      timeStr = '\u25CF HT';
+    } else if(!isNaN(elapsedNum)){
+      timeStr = '\u25CF ' + elapsedNum + "'";
     } else {
       timeStr = '\u25CF CANLI';
     }
@@ -495,7 +487,7 @@ function buildFixtureCard(f) {
         '<div class="match-center">' +
           '<span class="'+timeClass+'">'+timeStr+'</span>' +
           (hasScore ? '<span class="match-score">'+f.home_goals+' - '+f.away_goals+'</span>' : '<span class="vs-text">VS</span>') +
-          (hasScore && f.home_ht_goals !== null && f.home_ht_goals !== undefined ? '<span class="ht-score">İY '+f.home_ht_goals+'-'+f.away_ht_goals+'</span>' : '') +
+          (hasScore && f.home_ht_goals !== null && f.home_ht_goals !== undefined && f.away_ht_goals !== null && f.away_ht_goals !== undefined ? '<span class="ht-score">İY '+f.home_ht_goals+'-'+f.away_ht_goals+'</span>' : '') +
         '</div>' +
         '<span class="team-name away">'+esc(f.away_team_name||'?')+'</span>' +
       '</div>' +
