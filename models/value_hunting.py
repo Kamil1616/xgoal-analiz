@@ -1,12 +1,13 @@
 import math
 
+# ─── SABITLER ─────────────────────────────────────────────────────────────────
 DC_RHO = -0.14
-LIG_ORT = 1.05
-EV_AVANTAJI = 1.03
+LIG_ORT = 1.25        # Genel lig ortalaması
+EV_AVANTAJI = 1.08    # Ev avantajı katsayısı
 
 # ─── SINYAL EŞİKLERİ ──────────────────────────────────────────────────────────
 SIGNAL_THRESHOLDS = {"0.5": 0.87, "1.5": 0.80, "2.5": 0.65, "3.5": 0.55}
-MS_SIGNAL_THRESHOLDS = {"1": 0.55, "X": 0.35, "2": 0.50}
+MS_SIGNAL_THRESHOLDS = {"1": 0.60, "X": 0.38, "2": 0.55}
 FT_OVER_THRESHOLDS = {"1.5": 0.90, "2.5": 0.80, "3.5": 0.70}
 
 # ─── TEMEL FONKSIYONLAR ───────────────────────────────────────────────────────
@@ -40,6 +41,19 @@ def score_matrix(lambda_home, lambda_away, max_goals=8):
 
 # ─── LAMBDA HESAPLAMA ─────────────────────────────────────────────────────────
 def compute_lambdas(home_stats, away_stats):
+    """
+    Dixon-Coles standart formülü - ÇAPRAZ KULLANIM:
+      λ_home = home_attack × away_defence × LIG_ORT × EV_AVANTAJI
+      λ_away = away_attack × home_defence × LIG_ORT
+
+    home_attack  = ev takımı evde gol atma (lig ort=1.0)
+    home_defence = ev takımı evde gol yeme (lig ort=1.0)
+    away_attack  = dep takımı deplasmanda gol atma (lig ort=1.0)
+    away_defence = dep takımı deplasmanda gol yeme (lig ort=1.0)
+
+    Ev atacak: home_attack × away_defence (dep ne kadar yiyor?)
+    Dep atacak: away_attack × home_defence (ev ne kadar yiyor?)
+    """
     h_att = home_stats.get("home_attack", 1.0)
     h_def = home_stats.get("home_defence", 1.0)
     a_att = away_stats.get("away_attack", 1.0)
@@ -48,22 +62,24 @@ def compute_lambdas(home_stats, away_stats):
     lambda_home = h_att * a_def * LIG_ORT * EV_AVANTAJI
     lambda_away = a_att * h_def * LIG_ORT
 
-    lambda_home = max(0.3, min(3.0, lambda_home))
-    lambda_away = max(0.3, min(3.0, lambda_away))
+    lambda_home = max(0.30, min(3.50, lambda_home))
+    lambda_away = max(0.20, min(3.50, lambda_away))
 
     return round(lambda_home, 3), round(lambda_away, 3)
 
 def compute_lambda_iy(lambda_home, lambda_away, home_stats, away_stats):
     lambda_total = lambda_home + lambda_away
-    ht_home = home_stats.get("general", {}).get("ht_goal_ratio", 0.27)
-    ht_away = away_stats.get("general", {}).get("ht_goal_ratio", 0.27)
+    ht_home = home_stats.get("general", {}).get("ht_goal_ratio", 0.28)
+    ht_away = away_stats.get("general", {}).get("ht_goal_ratio", 0.28)
     ht_ratio = (ht_home + ht_away) / 2
-    ht_ratio = max(0.15, min(0.55, ht_ratio))
+    ht_ratio = max(0.18, min(0.48, ht_ratio))
     lambda_iy = lambda_total * ht_ratio
     btts = (home_stats.get("general", {}).get("btts_rate", 0.45) +
             away_stats.get("general", {}).get("btts_rate", 0.45)) / 2
-    if btts > 0.6:
-        lambda_iy *= 1.05
+    if btts > 0.65:
+        lambda_iy *= 1.06
+    elif btts < 0.30:
+        lambda_iy *= 0.94
     return round(lambda_iy, 3)
 
 # ─── OLASILIK HESAPLAMALARI ───────────────────────────────────────────────────
@@ -96,12 +112,14 @@ def compute_iyms_probs(lambda_home, lambda_away, lambda_iy):
     for ht in ["1", "X", "2"]:
         for ft in ["1", "X", "2"]:
             raw = ht_probs[ht] * ft_probs[ft]
-            if ht == ft:
-                raw *= 1.35
-            elif (ht == "1" and ft == "2") or (ht == "2" and ft == "1"):
-                raw *= 0.55
+            if (ht == "1" and ft == "2") or (ht == "2" and ft == "1"):
+                raw *= 0.45   # Skor dönüşü çok nadir
+            elif ht == ft:
+                raw *= 1.40   # Aynı yönde devam en olası
+            elif ft == "X":
+                raw *= 0.85   # Berabere biten
             else:
-                raw *= 0.90
+                raw *= 0.80   # X'ten dönüş
             iyms[f"{ht}/{ft}"] = raw
     total = sum(iyms.values())
     if total > 0:
@@ -128,7 +146,6 @@ def compute_iy_over_probs(lambda_iy):
     }
 
 def compute_ft_over_probs(lambda_total):
-    """Tam maç alt/üst olasılıkları"""
     def p_at_least(lam, k):
         return 1 - sum(poisson_prob(lam, i) for i in range(k))
     return {
@@ -139,7 +156,6 @@ def compute_ft_over_probs(lambda_total):
 
 # ─── VALUE BET ────────────────────────────────────────────────────────────────
 def compute_value_bet(ms_probs, odds_home, odds_draw, odds_away):
-    """BSD oranlarından value bet hesapla"""
     results = {}
     market_map = {"1": odds_home, "X": odds_draw, "2": odds_away}
     for outcome, odd in market_map.items():
@@ -148,7 +164,7 @@ def compute_value_bet(ms_probs, odds_home, odds_draw, odds_away):
         market_prob = 1 / odd
         model_prob = ms_probs.get(outcome, 0)
         value = model_prob - market_prob
-        if value > 0.05:  # %5+ değer varsa
+        if value > 0.05:
             results[outcome] = {
                 "model_prob": round(model_prob * 100, 1),
                 "market_prob": round(market_prob * 100, 1),
@@ -170,7 +186,6 @@ def get_iy_signals(iy_over_probs):
     return signals
 
 def get_ft_over_signals(ft_over_probs):
-    """FT alt/üst sinyalleri"""
     signals = []
     for market, prob in ft_over_probs.items():
         if prob >= FT_OVER_THRESHOLDS.get(market, 1.0):
@@ -196,7 +211,6 @@ def get_ms_signals(ms_probs):
     return signals
 
 def get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away):
-    """Kombine sinyal: IY 0.5>%90 + IY 1.5>%80 + λ Total>4"""
     signals = []
     iy05 = iy_over_probs.get("0.5", 0)
     iy15 = iy_over_probs.get("1.5", 0)
@@ -209,7 +223,6 @@ def get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away):
             "desc": f"IY 0.5 %{round(iy05*100,1)} + IY 1.5 %{round(iy15*100,1)} + λ={round(lambda_total,2)}",
             "confidence": 92
         })
-
     if lam_diff >= 1.5:
         signals.append({
             "type": "HOME_FAV",
@@ -224,12 +237,10 @@ def get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away):
             "desc": f"λ fark: {round(abs(lam_diff),2)} (Deplasman çok güçlü)",
             "confidence": round(79 + (abs(lam_diff) - 1.5) * 3, 1)
         })
-
     return signals
 
 # ─── IY+MS SKOR KOMBİNASYONLARI ──────────────────────────────────────────────
 def compute_iyms_score_combos(lambda_home, lambda_away, lambda_iy):
-    """En olası 3 IY+MS skor kombinasyonu"""
     total = lambda_home + lambda_away
     lh_iy = lambda_iy * (lambda_home / total) if total > 0 else lambda_iy / 2
     la_iy = lambda_iy * (lambda_away / total) if total > 0 else lambda_iy / 2
@@ -263,17 +274,17 @@ def run_analysis(home_stats_general, home_stats_home, away_stats_general, away_s
 
     if home_stats is None:
         home_stats = {
-            "home_attack": home_stats_home["avg_scored"] / 1.35,
+            "home_attack": home_stats_home["avg_scored"] / LIG_ORT,
             "home_defence": home_stats_home.get("goals_conceded", 10) / max(home_stats_home.get("goals_scored", 10), 1),
-            "away_attack": away_stats_general["avg_scored"] / 1.35,
+            "away_attack": away_stats_general["avg_scored"] / LIG_ORT,
             "away_defence": away_stats_general.get("goals_conceded", 20) / max(away_stats_general.get("goals_scored", 20), 1),
             "general": home_stats_general
         }
     if away_stats is None:
         away_stats = {
-            "home_attack": home_stats_general["avg_scored"] / 1.35,
+            "home_attack": home_stats_general["avg_scored"] / LIG_ORT,
             "home_defence": home_stats_general.get("goals_conceded", 20) / max(home_stats_general.get("goals_scored", 20), 1),
-            "away_attack": away_stats_away["avg_scored"] / 1.35,
+            "away_attack": away_stats_away["avg_scored"] / LIG_ORT,
             "away_defence": away_stats_away.get("goals_conceded", 12) / max(away_stats_away.get("goals_scored", 12), 1),
             "general": away_stats_general
         }
@@ -312,7 +323,6 @@ def run_analysis(home_stats_general, home_stats_home, away_stats_general, away_s
     score_probs = {f"{h}-{a}": round(p * 100, 1) for (h, a), p in top_scores}
 
     iyms_combos = compute_iyms_score_combos(lambda_home, lambda_away, lambda_iy)
-
     combo_signals = get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away)
 
     value_bets = {}
@@ -337,4 +347,5 @@ def run_analysis(home_stats_general, home_stats_home, away_stats_general, away_s
         "value_bets": value_bets,
         "score_probs": score_probs,
         "iyms_combos": iyms_combos,
+        "data_warning": False,
     }
