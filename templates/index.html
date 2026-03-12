@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>xGoal Analiz - Premium</title>
+<title>xGoal Analiz</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -68,6 +68,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .fixture-card:hover{border-color:var(--border2)}
 .fixture-card.has-signal{border-left:3px solid var(--signal)}
 .fixture-header{padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px}
+.fixture-header:hover{background:rgba(255,255,255,0.02)}
 
 /* Logo */
 .team-logo{width:28px;height:28px;border-radius:50%;object-fit:contain;background:var(--surface2);flex-shrink:0}
@@ -77,16 +78,22 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .team-name{font-size:12px;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .team-name.away{text-align:right}
 
-/* MATCH CENTER */
+/* ───────── MATCH CENTER ───────── */
 .match-center{display:flex;flex-direction:column;align-items:center;flex-shrink:0;gap:2px;min-width:64px}
 .match-time{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap}
 .match-time.live{color:var(--accent)}
 .match-score{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--accent);white-space:nowrap}
-.ht-score{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;opacity:0.7}
-.lambda-score{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent2);margin-top:1px;opacity:0.8}
+/* İLK YARI SKORU */
+.ht-score{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+  margin-top:2px;
+  opacity:0.7;
+}
 .vs-text{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
 
-/* card meta, badges, analysis panel, vb... diğer CSS aynı */
+/* card meta, badges, analysis panel, vb... (diğer CSS kodları aynı) */
 </style>
 </head>
 <body>
@@ -136,10 +143,12 @@ function renderFixtures(fixtures){
   var container = document.getElementById('fixturesContainer');
   container.innerHTML = '';
   fixtures.forEach(function(f){
+    // maç saati ve skor
     var time = f.match_time || '';
     var score = (f.home_goals !== undefined && f.away_goals !== undefined) ? f.home_goals + ' - ' + f.away_goals : '';
+
+    // İY skoru
     var htScore = (f.ht_home !== undefined && f.ht_away !== undefined) ? f.ht_home + '-' + f.ht_away : null;
-    var lambdaScore = (f.lambda_home !== undefined && f.lambda_away !== undefined) ? `${f.lambda_home.toFixed(2)} / ${f.lambda_away.toFixed(2)}` : null;
 
     var fixtureHTML = `
       <div class="fixture-card" data-fixture-id="${f.fixture_id}">
@@ -152,7 +161,6 @@ function renderFixtures(fixtures){
             <div class="match-time">${time}</div>
             ${score ? `<div class="match-score">${score}</div>` : `<div class="vs-text">vs</div>`}
             ${htScore ? `<div class="ht-score">İY ${htScore}</div>` : ``}
-            ${lambdaScore ? `<div class="lambda-score">λ ${lambdaScore}</div>` : ``}
           </div>
         </div>
       </div>
