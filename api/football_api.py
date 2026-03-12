@@ -7,7 +7,7 @@ import time
 AS_KEY = os.environ.get("ALLSPORTS_KEY", "")
 AS_URL = "https://apiv2.allsportsapi.com/football"
 
-LIG_ORT = 1.25  # value_hunting_xgoal.py ile aynı olmalı
+LIG_ORT = 1.35
 
 SOFA_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Android 11; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
@@ -37,30 +37,32 @@ def cap_def(v): return max(0.4, min(2.5, v))
 
 # ─── SOFASCORE: FIXTURES ──────────────────────────────────────────────────────
 def get_fixtures_sofascore(date):
-    """Sofascore'dan günlük fikstür çek"""
+    """Sofascore'dan günlük fikstür çek (UTC+3 için önceki gün de dahil)"""
     try:
+        # Türkiye UTC+3 — önceki günün geç maçları da bu tarihte olabilir
         prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-        next_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
         all_events = []
-        seen_ids = set()
-        for d in [prev_date, date, next_date]:
+        for d in [prev_date, date]:
             r = requests.get(
                 f"{SOFA_URL}/sport/football/scheduled-events/{d}",
                 headers=SOFA_HEADERS, timeout=15
             )
             if r.status_code == 200:
-                for e in r.json().get("events", []):
-                    eid = e.get("id")
-                    if eid not in seen_ids:
-                        seen_ids.add(eid)
-                        # Sofascore'un kendi tarihini kullan (UTC+3 dönüşümü yok)
-                        ts = e.get("startTimestamp", 0)
-                        local_dt = datetime.utcfromtimestamp(ts + 10800)
-                        e["_local_date"] = local_dt.strftime("%Y-%m-%d")
-                        all_events.append(e)
+                all_events.extend(r.json().get("events", []))
 
-        events = [e for e in all_events if e.get("_local_date") == date]
-        print(f"Sofascore: {len(all_events)} toplam, {len(events)} filtered ({date})")
+        # Sadece istenen tarihe ait maçları filtrele (UTC+3) + duplicate temizle
+        seen_ids = set()
+        filtered = []
+        for e in all_events:
+            eid = e.get("id")
+            if eid in seen_ids:
+                continue
+            seen_ids.add(eid)
+            ts = e.get("startTimestamp", 0)
+            local_dt = datetime.utcfromtimestamp(ts + 10800)  # UTC+3
+            if local_dt.strftime("%Y-%m-%d") == date:
+                filtered.append(e)
+        events = filtered
         result = []
         for e in events:
             home = e.get("homeTeam", {})
@@ -87,27 +89,19 @@ def get_fixtures_sofascore(date):
             else:
                 st = "NS"
 
-            # Dakika hesapla (canlı maçlar için)
-            # Sofascore status_code: 6=1.yarı, 7=2.yarı, 60=devre arası, 31=uzatma
-            # time_obj: currentPeriodStartTimestamp + initial (saniye) = periyot başlangıcı
+            # Dakika hesapla
             elapsed_min = None
             if status_type == "inprogress":
                 import time as _time
                 time_obj = e.get("time", {})
                 period_start = time_obj.get("currentPeriodStartTimestamp")
-                initial = time_obj.get("initial", 0)  # saniye cinsinden (2700=45dk)
-
-                if status_desc and "halftime" in status_desc.lower():
+                initial = time_obj.get("initial", 0)
+                status_desc = status.get("description", "").lower()
+                if "halftime" in status_desc:
                     elapsed_min = "HT"
                 elif period_start:
-                    # Periyot içinde geçen dakika
-                    elapsed_secs = _time.time() - period_start
-                    period_min = int(elapsed_secs / 60)
-                    # initial: 0=1.yarı başı, 2700=2.yarı başı (45dk)
-                    initial_min = int(initial / 60)
-                    elapsed_min = max(1, min(120, initial_min + period_min))
-                else:
-                    elapsed_min = None
+                    secs = _time.time() - period_start
+                    elapsed_min = max(1, min(120, int(initial / 60) + int(secs / 60)))
 
             # Saat (UTC+3 Türkiye = +10800 saniye)
             ts = e.get("startTimestamp", 0)
@@ -262,128 +256,95 @@ def get_sofascore_events(team_id, page=0):
         return []
 
 def stats_from_sofascore(events, team_id, fixture_id=None):
-    """
-    Sofascore maç verilerinden Dixon-Coles stats hesapla.
+    """Sofascore maç verilerinden stats hesapla"""
+    home_scored, home_conceded = [], []
+    away_scored, away_conceded = [], []
+    scored_all, conceded_all, ht_scored_all = [], [], []
 
-    Katsayılar lig ortalamasına (LIG_ORT) göre normalize edilir:
-      home_attack  = evdeki gol ortalamam / LIG_ORT
-      home_defence = evde yediğim gol ortalamam / LIG_ORT
-      away_attack  = deplasmanki gol ortalamam / LIG_ORT
-      away_defence = deplasmanki yediğim gol ortalamam / LIG_ORT
-
-    Bu katsayılar value_hunting'de ÇAPRAZ kullanılır:
-      λ_home = home_attack(ev) × away_defence(dep) × LIG_ORT × EV_AVANTAJI
-      λ_away = away_attack(dep) × home_defence(ev) × LIG_ORT
-
-    Exponential decay: son maça en yüksek ağırlık (0.5^0=1, 0.5^1=0.5, ...)
-    """
-    CUP_KEYWORDS = [
-        "cup", "kupa", "copa", "coupe", "pokal", "supercup", "super cup",
-        "fa cup", "league cup", "carabao", "friendly", "hazirlik", "superliga cup"
-    ]
-
+    # Kupa kelime listesi - bu turnuvalar filtrelenecek
+    CUP_KEYWORDS = ["cup", "kupa", "copa", "coupe", "pokal", "supercup", "super cup", 
+                    "fa cup", "league cup", "carabao", "friendly", "hazirlik", "superliga cup"]
+    
     finished = []
     for e in events:
         if e.get("status", {}).get("type") != "finished":
             continue
+        # Kupa maçlarını filtrele
         t_name = e.get("tournament", {}).get("name", "").lower()
-        if any(kw in t_name for kw in CUP_KEYWORDS):
+        is_cup = any(kw in t_name for kw in CUP_KEYWORDS)
+        if is_cup:
             continue
         finished.append(e)
-
+    
+    # Analiz edilecek maçı listeden çıkar (bugünkü maç dahil olmasın)
     if fixture_id:
         finished = [e for e in finished if e.get("id") != fixture_id]
+    finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-6:]
 
-    # Son 8 maç, en yeni en sonda
-    finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-8:]
-
-    if len(finished) < 3:
-        return None
-
-    n = len(finished)
-    # Exponential decay ağırlıkları: en son maça ağırlık=1, önceki=0.75, ...
-    DECAY = 0.75
-    weights = [DECAY ** (n - 1 - i) for i in range(n)]
-    w_total = sum(weights)
-
-    home_sc_w, home_co_w = 0.0, 0.0
-    away_sc_w, away_co_w = 0.0, 0.0
-    home_w_total, away_w_total = 0.0, 0.0
-    sc_w, co_w, ht_w, ft_w = 0.0, 0.0, 0.0, 0.0
-    btts_w = 0.0
-
-    recent_matches = []
-    for idx, m in enumerate(finished):
-        w = weights[idx]
-        is_home = m.get("homeTeam", {}).get("id") == team_id
+    for m in finished:
+        home_team = m.get("homeTeam", {})
+        is_home = home_team.get("id") == team_id
         hs = m.get("homeScore", {})
         as_ = m.get("awayScore", {})
 
         ft_h = hs.get("current")
         ft_a = as_.get("current")
-        ht_h = hs.get("period1") or 0
-        ht_a = as_.get("period1") or 0
+        ht_h = hs.get("period1")
+        ht_a = as_.get("period1")
 
         if ft_h is None or ft_a is None:
             continue
 
         gf = ft_h if is_home else ft_a
         ga = ft_a if is_home else ft_h
-        ht_gf = ht_h if is_home else ht_a
+        ht_gf = (ht_h if is_home else ht_a) or 0
 
-        sc_w  += gf * w
-        co_w  += ga * w
-        ht_w  += ht_gf * w
-        ft_w  += gf * w  # toplam atılan (ht ratio için)
-        btts_w += (1 if gf > 0 and ga > 0 else 0) * w
+        scored_all.append(gf)
+        conceded_all.append(ga)
+        ht_scored_all.append(ht_gf)
 
         if is_home:
-            home_sc_w += gf * w
-            home_co_w += ga * w
-            home_w_total += w
+            home_scored.append(gf)
+            home_conceded.append(ga)
         else:
-            away_sc_w += gf * w
-            away_co_w += ga * w
-            away_w_total += w
+            away_scored.append(gf)
+            away_conceded.append(ga)
 
+    if len(scored_all) < 3:
+        return None
+
+    avg_sh = sum(home_scored) / max(len(home_scored), 1)
+    avg_sa = sum(away_scored) / max(len(away_scored), 1)
+    avg_ch = sum(home_conceded) / max(len(home_conceded), 1)
+    avg_ca = sum(away_conceded) / max(len(away_conceded), 1)
+    avg_st = sum(scored_all) / len(scored_all)
+    avg_ct = sum(conceded_all) / len(conceded_all)
+    btts = sum(1 for s, c in zip(scored_all, conceded_all) if s > 0 and c > 0) / len(scored_all)
+    total_ft = sum(scored_all)
+    ht_ratio = max(0.15, min(0.42, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
+
+    h_att = cap_att(avg_sh / LIG_ORT if avg_sh > 0 else 1.0)
+    h_def = cap_def(avg_ch / LIG_ORT if avg_ch > 0 else 1.0)
+    a_att = cap_att(avg_sa / LIG_ORT if avg_sa > 0 else 1.0)
+    a_def = cap_def(avg_ca / LIG_ORT if avg_ca > 0 else 1.0)
+
+    # Ham maç listesi
+    recent_matches = []
+    for m in finished:
+        home_team = m.get("homeTeam", {})
+        away_team = m.get("awayTeam", {})
+        hs = m.get("homeScore", {})
+        as_ = m.get("awayScore", {})
         recent_matches.append({
             "date": datetime.utcfromtimestamp(m.get("startTimestamp", 0)).strftime("%Y-%m-%d"),
-            "home_team": m.get("homeTeam", {}).get("name"),
-            "away_team": m.get("awayTeam", {}).get("name"),
-            "score": f"{ft_h} - {ft_a}",
-            "ht_score": f"{ht_h} - {ht_a}",
+            "home_team": home_team.get("name"),
+            "away_team": away_team.get("name"),
+            "score": f"{hs.get('current', '?')} - {as_.get('current', '?')}",
+            "ht_score": f"{hs.get('period1', '?')} - {as_.get('period1', '?')}",
             "tournament": m.get("tournament", {}).get("name", ""),
         })
 
-    if w_total == 0:
-        return None
-
-    # Ağırlıklı ortalamalar
-    avg_st = sc_w / w_total
-    avg_ct = co_w / w_total
-    avg_ht_scored = ht_w / w_total
-    btts = btts_w / w_total
-
-    avg_sh = (home_sc_w / home_w_total) if home_w_total > 0 else avg_st * 1.1
-    avg_sa = (away_sc_w / away_w_total) if away_w_total > 0 else avg_st * 0.9
-    avg_ch = (home_co_w / home_w_total) if home_w_total > 0 else avg_ct * 0.9
-    avg_ca = (away_co_w / away_w_total) if away_w_total > 0 else avg_ct * 1.1
-
-    # HT gol oranı: IY atılan / FT atılan
-    ht_ratio = max(0.18, min(0.45, avg_ht_scored / avg_st if avg_st > 0 else 0.28))
-
-    # ─── Dixon-Coles katsayıları — LIG_ORT'a göre normalize ───
-    # home_attack  = evde gol atma gücüm (lig ortalamasına göre)
-    # home_defence = evde gol yeme zayıflığım (yüksek = kötü savunma)
-    # away_attack  = deplasmanki gol atma gücüm
-    # away_defence = deplasmanki gol yeme zayıflığım
-    h_att = cap_att(avg_sh / LIG_ORT)
-    h_def = cap_def(avg_ch / LIG_ORT)
-    a_att = cap_att(avg_sa / LIG_ORT)
-    a_def = cap_def(avg_ca / LIG_ORT)
-
-    print(f"Sofascore stats [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} "
-          f"a_att={a_att:.3f} a_def={a_def:.3f} maç={n} (ağırlıklı)")
+    print(f"Sofascore stats [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} a_att={a_att:.3f} a_def={a_def:.3f} maç={len(scored_all)}")
 
     return {
         "home_attack":  round(h_att, 4),
@@ -391,23 +352,12 @@ def stats_from_sofascore(events, team_id, fixture_id=None):
         "away_attack":  round(a_att, 4),
         "away_defence": round(a_def, 4),
         "general": {
-            "avg_scored": round(avg_st, 3),
-            "goals_scored": round(sc_w, 1),
-            "goals_conceded": round(co_w, 1),
-            "btts_rate": round(btts, 3),
-            "ht_goal_ratio": round(ht_ratio, 3),
-            "tempo_score": round(avg_st + avg_ct, 3),
+            "avg_scored": avg_st, "goals_scored": sum(scored_all),
+            "goals_conceded": sum(conceded_all), "btts_rate": btts,
+            "ht_goal_ratio": ht_ratio, "tempo_score": avg_st + avg_ct
         },
-        "home": {
-            "avg_scored": round(avg_sh, 3),
-            "goals_scored": round(home_sc_w, 1),
-            "goals_conceded": round(home_co_w, 1),
-        },
-        "away": {
-            "avg_scored": round(avg_sa, 3),
-            "goals_scored": round(away_sc_w, 1),
-            "goals_conceded": round(away_co_w, 1),
-        },
+        "home": {"avg_scored": avg_sh, "goals_scored": sum(home_scored), "goals_conceded": sum(home_conceded)},
+        "away": {"avg_scored": avg_sa, "goals_scored": sum(away_scored), "goals_conceded": sum(away_conceded)},
         "recent_matches": recent_matches,
     }
 
