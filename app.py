@@ -308,6 +308,38 @@ def api_test_sportoto():
             results[url.split("/")[-1]] = {"error": str(e)}
     return jsonify(results)
 
+@app.route("/api/debug-live")
+def api_debug_live():
+    """Canlı maçların ham Sofascore verisini göster"""
+    import requests
+    today = datetime.now().strftime("%Y-%m-%d")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Android 11; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.sofascore.com/",
+        "Origin": "https://www.sofascore.com",
+    }
+    try:
+        r = requests.get(
+            f"https://api.sofascore.com/api/v1/sport/football/scheduled-events/{today}",
+            headers=headers, timeout=10
+        )
+        events = r.json().get("events", [])
+        live = []
+        for e in events:
+            if e.get("status", {}).get("type") == "inprogress":
+                live.append({
+                    "id": e.get("id"),
+                    "home": e.get("homeTeam", {}).get("name"),
+                    "away": e.get("awayTeam", {}).get("name"),
+                    "status_code": e.get("status", {}).get("code"),
+                    "status_desc": e.get("status", {}).get("description"),
+                    "time_obj": e.get("time", {}),
+                })
+        return jsonify({"live_count": len(live), "matches": live})
+    except Exception as ex:
+        return jsonify({"error": str(ex)})
+
 @app.route("/api/test-sofascore")
 def api_test_sofascore():
     """Sofascore bağlantı testi - bugünün maçları"""
