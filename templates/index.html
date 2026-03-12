@@ -83,6 +83,7 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .match-time.live{color:var(--accent)}
 .match-score{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--accent);white-space:nowrap}
 .vs-text{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
+.ht-score{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:1px;opacity:0.65;letter-spacing:0.3px}
 
 .card-meta{display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px;gap:8px}
 .league-badge{font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
@@ -450,8 +451,32 @@ function buildFixtureCard(f) {
     var mm = String(d.getMinutes()).padStart(2,'0');
     t = hh + ':' + mm;
   }
-  var timeStr = isLive && f.elapsed ? '\u25CF '+f.elapsed+"'" : t;
-  var timeClass = isLive ? 'match-time live' : 'match-time';
+  var elapsedNum = f.elapsed ? parseInt(f.elapsed) : NaN;
+  var timeStr, timeClass;
+  if(isLive){
+    if(!isNaN(elapsedNum)){
+      timeStr = '\u25CF ' + elapsedNum + "'";  // canlı + dakika sayısı
+    } else if(f.elapsed){
+      // "1st half", "2nd half", "Halftime" gibi metinler
+      var el = String(f.elapsed).toLowerCase();
+      if(el.indexOf('halftime') >= 0 || el.indexOf('half time') >= 0){
+        timeStr = '\u25CF HT';
+      } else if(el.indexOf('2nd') >= 0 || el.indexOf('second') >= 0){
+        timeStr = '\u25CF 2Y';
+      } else {
+        timeStr = '\u25CF 1Y';
+      }
+    } else {
+      timeStr = '\u25CF CANLI';
+    }
+    timeClass = 'match-time live';
+  } else if(f.status === 'FT'){
+    timeStr = 'MS';
+    timeClass = 'match-time';
+  } else {
+    timeStr = t;
+    timeClass = 'match-time';
+  }
 
   var homeLogoUrl = 'https://media.api-sports.io/football/teams/' + f.home_team_id + '.png';
   var awayLogoUrl = 'https://media.api-sports.io/football/teams/' + f.away_team_id + '.png';
@@ -470,6 +495,7 @@ function buildFixtureCard(f) {
         '<div class="match-center">' +
           '<span class="'+timeClass+'">'+timeStr+'</span>' +
           (hasScore ? '<span class="match-score">'+f.home_goals+' - '+f.away_goals+'</span>' : '<span class="vs-text">VS</span>') +
+          (hasScore && f.home_ht_goals !== null && f.home_ht_goals !== undefined ? '<span class="ht-score">İY '+f.home_ht_goals+'-'+f.away_ht_goals+'</span>' : '') +
         '</div>' +
         '<span class="team-name away">'+esc(f.away_team_name||'?')+'</span>' +
       '</div>' +
