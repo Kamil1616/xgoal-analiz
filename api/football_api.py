@@ -92,16 +92,18 @@ def get_fixtures_sofascore(date):
             # Dakika hesapla (canlı maçlar için)
             elapsed_min = None
             if status_type == "inprogress":
-                # Sofascore'da dakika: e["time"]["played"] veya e["time"]["current"]
                 time_obj = e.get("time", {})
                 played = time_obj.get("played")
                 current = time_obj.get("current")
-                if played is not None:
+                # status_code: 6=1.yarı, 7=devre arası, 8=2.yarı, 31=uzatma
+                if status_code == 7:
+                    # Devre arası — HT göster
+                    elapsed_min = "HT"
+                elif played is not None:
                     elapsed_min = int(played)
                 elif current is not None:
                     elapsed_min = int(current)
                 else:
-                    # Son çare: startTimestamp farkından hesapla
                     import time as _time
                     elapsed_secs = _time.time() - e.get("startTimestamp", _time.time())
                     elapsed_min = max(1, min(120, int(elapsed_secs / 60)))
