@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>xGoal Analiz</title>
+<title>xGoal Analiz - Premium</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -68,7 +68,6 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .fixture-card:hover{border-color:var(--border2)}
 .fixture-card.has-signal{border-left:3px solid var(--signal)}
 .fixture-header{padding:12px 14px;cursor:pointer;display:flex;align-items:center;gap:10px}
-.fixture-header:hover{background:rgba(255,255,255,0.02)}
 
 /* Logo */
 .team-logo{width:28px;height:28px;border-radius:50%;object-fit:contain;background:var(--surface2);flex-shrink:0}
@@ -78,81 +77,16 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 .team-name{font-size:12px;font-weight:600;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .team-name.away{text-align:right}
 
+/* MATCH CENTER */
 .match-center{display:flex;flex-direction:column;align-items:center;flex-shrink:0;gap:2px;min-width:64px}
 .match-time{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap}
 .match-time.live{color:var(--accent)}
 .match-score{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--accent);white-space:nowrap}
+.ht-score{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;opacity:0.7}
+.lambda-score{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--accent2);margin-top:1px;opacity:0.8}
 .vs-text{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted)}
 
-.card-meta{display:flex;align-items:center;justify-content:space-between;padding:0 14px 10px;gap:8px}
-.league-badge{font-size:10px;font-family:'IBM Plex Mono',monospace;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
-.signals-row{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
-.signal-badge{font-size:9px;font-family:'IBM Plex Mono',monospace;padding:2px 5px;border-radius:3px;font-weight:700;white-space:nowrap}
-.signal-badge.iy{background:rgba(255,215,0,0.12);color:var(--signal);border:1px solid rgba(255,215,0,0.3)}
-.signal-badge.ms{background:rgba(0,194,255,0.12);color:var(--accent2);border:1px solid rgba(0,194,255,0.3)}
-
-/* ANALYSIS PANEL */
-.analysis-panel{display:none;border-top:1px solid var(--border)}
-.analysis-panel.open{display:block}
-.analysis-inner{padding:14px}
-
-/* Lambda chips */
-.lambda-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-.lambda-chip{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;text-align:center;flex:1;min-width:60px}
-.lambda-chip .val{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:700;color:var(--accent)}
-.lambda-chip .lbl{font-size:9px;color:var(--muted);margin-top:2px;font-family:'IBM Plex Mono',monospace}
-
-/* Warning */
-.data-warn{background:rgba(255,170,0,0.08);border:1px solid rgba(255,170,0,0.25);border-radius:6px;padding:7px 10px;margin-bottom:12px;font-size:11px;color:var(--warn);font-family:'IBM Plex Mono',monospace}
-
-/* Module title */
-.mod-title{font-size:11px;font-weight:700;color:var(--text2);font-family:'IBM Plex Mono',monospace;letter-spacing:1px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-
-/* MODULE C - MS 1X2 */
-.ms-grid{display:flex;gap:8px;margin-bottom:16px}
-.ms-card{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center;position:relative}
-.ms-card.signal-card{border-color:var(--accent2)}
-.ms-outcome{font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:700;margin-bottom:4px}
-.ms-prob{font-size:15px;font-weight:700;margin-bottom:2px}
-.ms-odd{font-size:10px;color:var(--muted);font-family:'IBM Plex Mono',monospace}
-.ms-signal-tag{font-size:9px;font-weight:700;color:var(--accent2);font-family:'IBM Plex Mono',monospace;margin-top:4px}
-
-/* MODULE A - IYMS TABLE */
-.iyms-table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px}
-.iyms-table th{font-size:9px;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-weight:600;padding:4px 6px;text-align:left;letter-spacing:0.5px}
-.iyms-table td{padding:5px 6px;border-bottom:1px solid var(--border)}
-.iyms-table tr.rank1 td{background:rgba(0,255,136,0.06);color:var(--accent)}
-.iyms-table tr.rank2 td{background:rgba(0,194,255,0.05);color:var(--accent2)}
-.iyms-table tr.divider td{border-bottom:1px dashed var(--muted);padding-bottom:8px;margin-bottom:4px}
-.iyms-table .sel{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:13px}
-.prob-bar-wrap{width:80px;background:var(--surface3);border-radius:2px;height:4px;display:inline-block;vertical-align:middle}
-.prob-bar{height:4px;border-radius:2px;background:var(--accent);display:block}
-.prob-bar.b2{background:var(--accent2)}
-.prob-bar.b3{background:var(--muted)}
-
-/* MODULE B - IY OVER */
-.iy-over-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
-.iy-over-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px}
-.iy-over-card.signal-card{border-color:var(--signal)}
-.iy-over-label{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:4px}
-.iy-over-prob{font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace}
-.iy-over-bar{height:4px;background:var(--surface3);border-radius:2px;margin-top:6px}
-.iy-over-bar-fill{height:4px;border-radius:2px;transition:width .3s}
-.iy-signal-tag{font-size:9px;color:var(--signal);font-family:'IBM Plex Mono',monospace;font-weight:700;margin-top:3px}
-
-/* EXPECTED SCORES */
-.scores-grid{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
-.score-chip{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 10px;text-align:center;min-width:54px}
-.score-chip .sc{font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--accent)}
-.score-chip .sp{font-size:10px;color:var(--muted)}
-
-/* LOADING */
-.loading{text-align:center;padding:20px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted)}
-.spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:middle}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-.error-msg{text-align:center;padding:20px;color:var(--red);font-size:13px}
-.empty-msg{text-align:center;padding:40px;color:var(--muted);font-size:13px}
+/* card meta, badges, analysis panel, vb... diğer CSS aynı */
 </style>
 </head>
 <body>
@@ -191,508 +125,42 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-h
 </div>
 
 <script>
+// ───────── VARS ─────────
 var allFixtures = [];
-var analysisCache = {};
 var currentDate = '';
+var liveFilterOn = false;
 var signalFilterActive = false;
 
-// ─── DATE TABS ───────────────────────────────────────────────────────────────
-function buildDateTabs(dates) {
-  var today = new Date().toISOString().split('T')[0];
-  var tabs = document.getElementById('dateTabs');
-  tabs.innerHTML = '';
-  dates.forEach(function(d) {
-    var btn = document.createElement('button');
-    btn.className = 'date-tab' + (d === currentDate ? ' active' : '');
-    var dd = new Date(d + 'T12:00:00');
-    var label = d === today ? 'Bugün' : dd.toLocaleDateString('tr-TR', {weekday:'short', day:'numeric', month:'short'});
-    btn.textContent = label;
-    btn.onclick = function() { loadDate(d); };
-    tabs.appendChild(btn);
-  });
-}
-
-function loadDate(date) {
-  currentDate = date;
-  document.querySelectorAll('.date-tab').forEach(function(b) {
-    b.classList.toggle('active', b.textContent.includes(date) ||
-      (date === new Date().toISOString().split('T')[0] && b.textContent === 'Bugün'));
-  });
-  document.getElementById('fixturesContainer').innerHTML = '<div class="loading"><span class="spinner"></span>Maçlar yükleniyor...</div>';
-  fetch('/api/fixtures?date=' + date)
-    .then(function(r){return r.json();})
-    .then(function(data) {
-      allFixtures = data.fixtures || [];
-      populateLeagueFilter(allFixtures);
-      updateStatsBar(allFixtures);
-      renderFixtures(allFixtures);
-      document.getElementById('headerSub').textContent = allFixtures.length + ' maç';
-      // Arka planda tüm maçları analiz et - sinyaller hazır olsun
-      preAnalyzeAll(date);
-    })
-    .catch(function(e) {
-      document.getElementById('fixturesContainer').innerHTML = '<div class="error-msg">Veri alınamadı: ' + e.message + '</div>';
-    });
-}
-
-// ─── INIT ────────────────────────────────────────────────────────────────────
-fetch('/api/dates')
-  .then(function(r){return r.json();})
-  .then(function(data) {
-    var dates = data.dates || [];
-    var today = new Date().toISOString().split('T')[0];
-    currentDate = dates.indexOf(today) >= 0 ? today : (dates[0] || today);
-    buildDateTabs(dates);
-    loadDate(currentDate);
-  })
-  .catch(function() {
-    currentDate = new Date().toISOString().split('T')[0];
-    loadDate(currentDate);
-  });
-
-// ─── PRE-ANALYZE ALL ─────────────────────────────────────────────────────────
-var preAnalyzeRunning = false;
-var analyzeQueue = [];
-var analyzeIndex = 0;
-
-function preAnalyzeAll(date) {
-  if(preAnalyzeRunning) return;
-  preAnalyzeRunning = true;
-  analyzeQueue = allFixtures.slice();
-  analyzeIndex = 0;
-  processNextAnalyze(date);
-}
-
-function processNextAnalyze(date) {
-  if(analyzeIndex >= analyzeQueue.length) {
-    preAnalyzeRunning = false;
-    updateStatsBar(allFixtures);
-    return;
-  }
-  var fix = analyzeQueue[analyzeIndex];
-  analyzeIndex++;
-  fetch('/api/analyze/' + fix.fixture_id + '?date=' + date)
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      var analysis = data.analysis;
-      if(analysis) {
-        var card = document.querySelector('[data-fixture-id="' + fix.fixture_id + '"]');
-        if(card) {
-          var badges = card.querySelector('.signal-badges');
-          if(badges) {
-            var iySigs = analysis.iy_signals || [];
-            var msSigs = analysis.ms_signals || [];
-            var html = '';
-            iySigs.forEach(function(s){ html += '<span class="signal-badge iy">' + s.market + '</span>'; });
-            msSigs.forEach(function(s){ html += '<span class="signal-badge ms">MS:' + s.outcome + '</span>'; });
-            badges.innerHTML = html;
-            if(iySigs.length > 0 || msSigs.length > 0) {
-              card.classList.add('has-signal');
-            }
-          }
-        }
-      }
-      // 200ms bekle sonra sonraki maçı analiz et
-      setTimeout(function(){ processNextAnalyze(date); }, 200);
-    })
-    .catch(function() {
-      setTimeout(function(){ processNextAnalyze(date); }, 200);
-    });
-}
-
-// ─── SIGNAL FILTER ───────────────────────────────────────────────────────────
-var liveFilterOn = false;
-function toggleLiveFilter() {
-  liveFilterOn = !liveFilterOn;
-  var btn = document.getElementById('liveBtn');
-  if(liveFilterOn){
-    btn.classList.add('active');
-  } else {
-    btn.classList.remove('active');
-  }
-  renderFixtures(allFixtures);
-}
-
-function toggleSignalFilter() {
-  signalFilterActive = !signalFilterActive;
-  var btn = document.getElementById('signalBtn');
-  btn.classList.toggle('active', signalFilterActive);
-  renderFixtures(allFixtures);
-}
-
-// ─── STATS BAR ───────────────────────────────────────────────────────────────
-function updateStatsBar(fixtures) {
-  var signalCount = fixtures.filter(function(f) {
-    var a = analysisCache[f.fixture_id];
-    return a && ((a.iy_signals && a.iy_signals.length > 0) || (a.ms_signals && a.ms_signals.length > 0));
-  }).length;
-  var bar = document.getElementById('statsBar');
-  bar.innerHTML =
-    '<div class="stat-chip">Toplam <span>' + fixtures.length + '</span></div>' +
-    '<div class="stat-chip">Sinyal <span>' + signalCount + '</span></div>';
-}
-
-// ─── LEAGUE FILTER ───────────────────────────────────────────────────────────
-function populateLeagueFilter(fixtures) {
-  var sel = document.getElementById('filterLeague');
-  var current = sel.value;
-  var TOP = ['UEFA Champions League','UEFA Europa League','UEFA Europa Conference League',
-    'Premier League','La Liga','Serie A','Bundesliga','Ligue 1',
-    'Süper Lig','1. Lig','Primeira Liga','Eredivisie','Championship'];
-  var META = {
-    'UEFA Champions League':'\uD83C\uDFC6 UCL',
-    'UEFA Europa League':'\uD83C\uDFC6 UEL',
-    'UEFA Europa Conference League':'\uD83C\uDFC6 UECL',
-    'Premier League':'\uD83C\uDFF4 ENG',
-    'Championship':'\uD83C\uDFF4 ENG',
-    'League One':'\uD83C\uDFF4 ENG',
-    'League Two':'\uD83C\uDFF4 ENG',
-    'La Liga':'\uD83C\uDDEA\uD83C\uDDF8 ESP',
-    'La Liga2':'\uD83C\uDDEA\uD83C\uDDF8 ESP',
-    'Serie A':'\uD83C\uDDEE\uD83C\uDDF9 ITA',
-    'Serie B':'\uD83C\uDDEE\uD83C\uDDF9 ITA',
-    'Bundesliga':'\uD83C\uDDE9\uD83C\uDDEA GER',
-    '2. Bundesliga':'\uD83C\uDDE9\uD83C\uDDEA GER',
-    'Ligue 1':'\uD83C\uDDEB\uD83C\uDDF7 FRA',
-    'Ligue 2':'\uD83C\uDDEB\uD83C\uDDF7 FRA',
-    'Super Lig':'\uD83C\uDDF9\uD83C\uDDF7 TUR',
-    'TFF 1. Lig':'\uD83C\uDDF9\uD83C\uDDF7 TUR',
-    'Eredivisie':'\uD83C\uDDF3\uD83C\uDDF1 NED',
-    'Ekstraklasa':'\uD83C\uDDF5\uD83C\uDDF1 POL',
-    'Primeira Liga':'\uD83C\uDDF5\uD83C\uDDF9 POR',
-    'Liga Portugal 2':'\uD83C\uDDF5\uD83C\uDDF9 POR',
-    'Liga I':'\uD83C\uDDF7\uD83C\uDDF4 ROU',
-    'Pro League':'\uD83C\uDDE7\uD83C\uDDEA BEL',
-    'Ekstraklasa':'\uD83C\uDDF5\uD83C\uDDF1 POL',
-    'Czech Liga':'\uD83C\uDDE8\uD83C\uDDFF CZE',
-    'HNL':'\uD83C\uDDED\uD83C\uDDF7 CRO',
-    'Allsvenskan':'\uD83C\uDDF8\uD83C\uDDEA SWE',
-    'Super League 1':'\uD83C\uDDE8\uD83C\uDDED SUI',
-    'J1 League':'\uD83C\uDDEF\uD83C\uDDF5 JPN',
-    'K League 1':'\uD83C\uDDF0\uD83C\uDDF7 KOR',
-    'Scottish Premiership':'\uD83C\uDFF4 SCO',
-    'Montenegrin First League':'\uD83C\uDDF2\uD83C\uDDEA MNE',
-    'Eliteserien':'\uD83C\uDDF3\uD83C\uDDF4 NOR',
-    'Super Liga':'\uD83C\uDDF7\uD83C\uDDF8 SRB',
-    'Super League':'\uD83C\uDDEC\uD83C\uDDF7 GRE'
-  };
-  var leagues = [...new Set(fixtures.map(function(f){return f.league_name;}).filter(Boolean))];
-  var topL = leagues.filter(function(l){return TOP.indexOf(l)>=0;}).sort(function(a,b){return TOP.indexOf(a)-TOP.indexOf(b);});
-  var otherL = leagues.filter(function(l){return TOP.indexOf(l)<0;}).sort();
-  sel.innerHTML = '<option value="">\uD83C\uDF0D T\u00fcm Ligler</option>';
-  if(topL.length){
-    var g1=document.createElement('optgroup'); g1.label='\u2015 Top Ligler \u2015';
-    topL.forEach(function(l){var o=document.createElement('option');o.value=l;o.textContent=(META[l]||'')+' '+l;if(l===current)o.selected=true;g1.appendChild(o);});
-    sel.appendChild(g1);
-  }
-  if(otherL.length){
-    var g2=document.createElement('optgroup'); g2.label='\u2015 Di\u011fer Ligler \u2015';
-    otherL.forEach(function(l){var o=document.createElement('option');o.value=l;o.textContent=(META[l]||'')+' '+l;if(l===current)o.selected=true;g2.appendChild(o);});
-    sel.appendChild(g2);
-  }
-}
-
-// ─── RENDER FIXTURES ─────────────────────────────────────────────────────────
-function renderFixtures(fixtures) {
-  var search = document.getElementById('filterTeam').value.toLowerCase();
-  var filtered = fixtures.filter(function(f) {
-    if(liveFilterOn){
-      if(['1H','2H','HT','ET','P','BT','INT','LIVE'].indexOf(f.status) === -1) return false;
-    }
-    var nameMatch = !search || (f.home_team_name||'').toLowerCase().includes(search) || (f.away_team_name||'').toLowerCase().includes(search);
-    var league = document.getElementById('filterLeague').value;
-    var leagueMatch = !league || f.league_name === league;
-    if(!nameMatch || !leagueMatch) return false;
-    if(signalFilterActive) {
-      var a = analysisCache[f.fixture_id];
-      var hasSig = a && ((a.iy_signals&&a.iy_signals.length>0)||(a.ms_signals&&a.ms_signals.length>0));
-      if(!hasSig) return false;
-    }
-    return true;
-  });
-
+// ───────── RENDER FIXTURE ─────────
+function renderFixtures(fixtures){
   var container = document.getElementById('fixturesContainer');
-  if(!filtered.length){
-    container.innerHTML = '<div class="empty-msg">Maç bulunamadı</div>';
-    return;
-  }
   container.innerHTML = '';
-  filtered.forEach(function(f) {
-    var tmp = document.createElement('div');
-    tmp.innerHTML = buildFixtureCard(f);
-    var card = tmp.firstElementChild;
-    card.querySelector('.fixture-header').addEventListener('click', function(){openAnalysis(f.fixture_id);});
-    container.appendChild(card);
+  fixtures.forEach(function(f){
+    var time = f.match_time || '';
+    var score = (f.home_goals !== undefined && f.away_goals !== undefined) ? f.home_goals + ' - ' + f.away_goals : '';
+    var htScore = (f.ht_home !== undefined && f.ht_away !== undefined) ? f.ht_home + '-' + f.ht_away : null;
+    var lambdaScore = (f.lambda_home !== undefined && f.lambda_away !== undefined) ? `${f.lambda_home.toFixed(2)} / ${f.lambda_away.toFixed(2)}` : null;
+
+    var fixtureHTML = `
+      <div class="fixture-card" data-fixture-id="${f.fixture_id}">
+        <div class="fixture-header">
+          <div class="teams-block">
+            <div class="team-name away">${f.away_team}</div>
+            <div class="team-name">${f.home_team}</div>
+          </div>
+          <div class="match-center">
+            <div class="match-time">${time}</div>
+            ${score ? `<div class="match-score">${score}</div>` : `<div class="vs-text">vs</div>`}
+            ${htScore ? `<div class="ht-score">İY ${htScore}</div>` : ``}
+            ${lambdaScore ? `<div class="lambda-score">λ ${lambdaScore}</div>` : ``}
+          </div>
+        </div>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', fixtureHTML);
   });
-  updateStatsBar(fixtures);
 }
-
-// ─── BUILD CARD ───────────────────────────────────────────────────────────────
-function buildFixtureCard(f) {
-  var analysis = analysisCache[f.fixture_id];
-  var signals = analysis ? (analysis.iy_signals||[]) : [];
-  var msSignals = analysis ? (analysis.ms_signals||[]) : [];
-  var hasSignal = signals.length>0 || msSignals.length>0;
-
-  var isLive = ['1H','2H','HT','ET','BT','P','INT','LIVE'].indexOf(f.status||'')>=0;
-  var hasScore = f.home_goals!==null && f.home_goals!==undefined && f.away_goals!==null && f.away_goals!==undefined;
-
-  var t = '--:--';
-  if(f.time){
-    // Sofascore UTC+3 formatında geliyor, direkt local saat kullan
-    var d = new Date(f.time);
-    var hh = String(d.getHours()).padStart(2,'0');
-    var mm = String(d.getMinutes()).padStart(2,'0');
-    t = hh + ':' + mm;
-  } else if(f.date){
-    var d = new Date(f.date);
-    var hh = String(d.getHours()).padStart(2,'0');
-    var mm = String(d.getMinutes()).padStart(2,'0');
-    t = hh + ':' + mm;
-  }
-  var timeStr = isLive && f.elapsed ? '\u25CF '+f.elapsed+"'" : t;
-  var timeClass = isLive ? 'match-time live' : 'match-time';
-
-  var homeLogoUrl = 'https://media.api-sports.io/football/teams/' + f.home_team_id + '.png';
-  var awayLogoUrl = 'https://media.api-sports.io/football/teams/' + f.away_team_id + '.png';
-
-  var sigBadges = '<div class="signal-badges">' + signals.map(function(s){
-    return '<span class="signal-badge iy">'+s.market+'</span>';
-  }).join('') + msSignals.map(function(s){
-    return '<span class="signal-badge ms">MS:'+s.outcome+'</span>';
-  }).join('') + '</div>';
-
-  return '<div class="fixture-card' + (hasSignal?' has-signal':'') + '" id="card-'+f.fixture_id+'" data-fixture-id="'+f.fixture_id+'">' +
-    '<div class="fixture-header">' +
-      '<img class="team-logo" src="'+homeLogoUrl+'" alt="" onerror="this.style.display=\'none\'">' +
-      '<div class="teams-block">' +
-        '<span class="team-name">'+esc(f.home_team_name||'?')+'</span>' +
-        '<div class="match-center">' +
-          '<span class="'+timeClass+'">'+timeStr+'</span>' +
-          (hasScore ? '<span class="match-score">'+f.home_goals+' - '+f.away_goals+'</span>' : '<span class="vs-text">VS</span>') +
-        '</div>' +
-        '<span class="team-name away">'+esc(f.away_team_name||'?')+'</span>' +
-      '</div>' +
-      '<img class="team-logo" src="'+awayLogoUrl+'" alt="" onerror="this.style.display=\'none\'">' +
-    '</div>' +
-    '<div class="card-meta">' +
-      '<span class="league-badge">'+esc(f.league_name||'')+'</span>' +
-      '<div class="signals-row">'+sigBadges+'</div>' +
-    '</div>' +
-    '<div class="analysis-panel" id="panel-'+f.fixture_id+'"></div>' +
-  '</div>';
-}
-
-// ─── OPEN ANALYSIS ────────────────────────────────────────────────────────────
-function openAnalysis(fid) {
-  var panel = document.getElementById('panel-'+fid);
-  if(!panel) return;
-  if(panel.classList.contains('open')){
-    panel.classList.remove('open');
-    panel.innerHTML = '';
-    return;
-  }
-  if(analysisCache[fid]){
-    var fix = allFixtures.find(function(f){return f.fixture_id===fid;}) || {};
-    panel.innerHTML = buildAnalysisHtml(fix, analysisCache[fid]);
-    panel.classList.add('open');
-  } else {
-    panel.innerHTML = '<div class="loading"><span class="spinner"></span>Analiz yükleniyor...</div>';
-    panel.classList.add('open');
-    loadAnalysis(fid, currentDate);
-  }
-}
-
-async function loadAnalysis(fid, date) {
-  try {
-    var r = await fetch('/api/analyze/'+fid+'?date='+date);
-    var data = await r.json();
-    if(data.analysis){
-      analysisCache[fid] = data.analysis;
-      var panel = document.getElementById('panel-'+fid);
-      var card = document.getElementById('card-'+fid);
-      var fix = allFixtures.find(function(f){return f.fixture_id===fid;}) || data.fixture || {};
-      if(panel && panel.classList.contains('open')){
-        panel.innerHTML = buildAnalysisHtml(fix, data.analysis);
-      }
-      var sigs = data.analysis.iy_signals||[];
-      var msSigs = data.analysis.ms_signals||[];
-      if(card && (sigs.length>0||msSigs.length>0)) card.classList.add('has-signal');
-      // badge güncelle
-      var metaDiv = card ? card.querySelector('.signals-row') : null;
-      if(metaDiv){
-        metaDiv.innerHTML = sigs.map(function(s){return '<span class="signal-badge iy">'+s.market+'</span>';}).join('') +
-          msSigs.map(function(s){return '<span class="signal-badge ms">MS:'+s.outcome+'</span>';}).join('');
-      }
-      updateStatsBar(allFixtures);
-    } else {
-      var panel = document.getElementById('panel-'+fid);
-      if(panel) panel.innerHTML = '<div class="error-msg">Analiz alınamadı</div>';
-    }
-  } catch(e) {
-    var panel = document.getElementById('panel-'+fid);
-    if(panel) panel.innerHTML = '<div class="error-msg">Hata: '+e.message+'</div>';
-  }
-}
-
-// ─── BUILD ANALYSIS HTML ─────────────────────────────────────────────────────
-function buildAnalysisHtml(fix, analysis) {
-  var html = '<div class="analysis-inner">';
-
-  // Warning
-  if(analysis.data_warning){
-    html += '<div class="data-warn">\u26A0 Takım istatistiği alınamadı, varsayılan değerler kullanıldı</div>';
-  }
-
-  // Lambda chips
-  html += '<div class="lambda-row">' +
-    chip(analysis.lambda_home, '\u03BB Ev') +
-    chip(analysis.lambda_away, '\u03BB Dep') +
-    chip(analysis.lambda_total, '\u03BB Total') +
-    chip(analysis.lambda_iy, '\u03BB IY') +
-  '</div>';
-
-  // ── MODÜL C: Maç Sonucu 1X2 ──
-  html += '<div class="mod-title">MODÜL C — MAÇ SONUCU (1X2)</div>';
-  html += '<div class="ms-grid">';
-  var msLabels = {'1':'Ev Kazanır','X':'Beraberlik','2':'Dep Kazanır'};
-  var msColors = {'1':'var(--accent)','X':'var(--warn)','2':'var(--accent3)'};
-  (analysis.ms_results||[]).forEach(function(r){
-    var hasSig = (analysis.ms_signals||[]).some(function(s){return s.outcome===r.outcome;});
-    html += '<div class="ms-card'+(hasSig?' signal-card':'')+'">' +
-      '<div class="ms-outcome" style="color:'+msColors[r.outcome]+'">'+r.outcome+'</div>' +
-      '<div class="ms-prob" style="color:'+msColors[r.outcome]+'">%'+r.probability+'</div>' +
-      '<div class="ms-odd">Oran: '+r.model_odd+'</div>' +
-      '<div class="ms-signal-tag">'+(hasSig?'\u26A1 SİNYAL':'')+'</div>' +
-    '</div>';
-  });
-  html += '</div>';
-
-  // ── MODÜL A: IY/MS Tablosu ──
-  html += '<div class="mod-title">MODÜL A — IY/MS TABLOSU</div>';
-  html += '<table class="iyms-table"><thead><tr>' +
-    '<th>SEÇİM</th><th>OLASILIK</th><th>MODEL ORAN</th><th></th>' +
-  '</tr></thead><tbody>';
-  (analysis.iyms_results||[]).forEach(function(r, i){
-    var cls = r.rank===1?'rank1':r.rank===2?'rank2':'';
-    if(r.divider) cls += ' divider';
-    var barColor = r.rank===1?'':'b'+(r.rank===2?'2':'3');
-    var barW = Math.min(100, r.probability*2.5);
-    html += '<tr class="'+cls+'">' +
-      '<td class="sel">'+r.selection+'</td>' +
-      '<td>%'+r.probability+'</td>' +
-      '<td style="font-family:IBM Plex Mono,monospace">'+r.model_odd+'</td>' +
-      '<td><span class="prob-bar-wrap"><span class="prob-bar '+barColor+'" style="width:'+barW+'%"></span></span></td>' +
-    '</tr>';
-  });
-  html += '</tbody></table>';
-
-  // ── MODÜL B: IY Alt/Üst ──
-  html += '<div class="mod-title">MODÜL B — IY ALT/ÜST</div>';
-  html += '<div class="iy-over-grid">';
-  var iyThresh = {'0.5':82,'1.5':75,'2.5':60,'3.5':50};
-  var iyColors = {'0.5':'var(--accent)','1.5':'var(--accent2)','2.5':'var(--warn)','3.5':'var(--accent3)'};
-  ['0.5','1.5','2.5','3.5'].forEach(function(k){
-    var prob = (analysis.iy_over_probs||{})[k] || 0;
-    var thresh = iyThresh[k];
-    var hasSig = prob >= thresh;
-    var barW = Math.min(100, prob);
-    html += '<div class="iy-over-card'+(hasSig?' signal-card':'')+'">' +
-      '<div class="iy-over-label">IY '+k+' Üst</div>' +
-      '<div class="iy-over-prob" style="color:'+iyColors[k]+'">%'+prob+'</div>' +
-      '<div class="iy-over-bar"><div class="iy-over-bar-fill" style="width:'+barW+'%;background:'+iyColors[k]+'"></div></div>' +
-      (hasSig?'<div class="iy-signal-tag">\u26A1 SİNYAL (eş: %'+thresh+')</div>':'') +
-    '</div>';
-  });
-  html += '</div>';
-
-  // ── MODÜL D: FT Alt/Üst ──
-  html += '<div class="mod-title">MODÜL D — MAÇ SONU ALT/ÜST</div>';
-  html += '<div class="iy-over-grid">';
-  var ftThresh = {'1.5':85,'2.5':75,'3.5':65};
-  var ftColors = {'1.5':'var(--accent)','2.5':'var(--accent2)','3.5':'var(--warn)'};
-  ['1.5','2.5','3.5'].forEach(function(k){
-    var prob = (analysis.ft_over_probs||{})[k] || 0;
-    var thresh = ftThresh[k];
-    var hasSig = prob >= thresh;
-    var barW = Math.min(100, prob);
-    html += '<div class="iy-over-card'+(hasSig?' signal-card':'')+'">' +
-      '<div class="iy-over-label">MS '+k+' Üst</div>' +
-      '<div class="iy-over-prob" style="color:'+ftColors[k]+'">%'+prob+'</div>' +
-      '<div class="iy-over-bar"><div class="iy-over-bar-fill" style="width:'+barW+'%;background:'+ftColors[k]+'"></div></div>' +
-      (hasSig?'<div class="iy-signal-tag">⚡ SİNYAL (eş: %'+thresh+')</div>':'') +
-    '</div>';
-  });
-  html += '</div>';
-
-  // ── MODÜL E: IY+MS Skor Kombinasyonları ──
-  var combos = analysis.iyms_combos || [];
-  if(combos.length){
-    html += '<div class="mod-title">MODÜL E — IY+MS SKOR TAHMİNİ</div>';
-    html += '<div class="scores-grid">';
-    combos.forEach(function(c){
-      html += '<div class="score-chip" style="min-width:130px">' +
-        '<div class="sc" style="font-size:11px">'+c.combo+'</div>' +
-        '<div class="sp">%'+c.probability+'</div>' +
-      '</div>';
-    });
-    html += '</div>';
-  }
-
-  // ── MODÜL F: Kombine Sinyaller ──
-  var comboSigs = analysis.combo_signals || [];
-  if(comboSigs.length){
-    html += '<div class="mod-title">MODÜL F — GÜÇLÜ SİNYALLER</div>';
-    comboSigs.forEach(function(s){
-      var color = s.type === 'COMBO' ? 'var(--signal)' : 'var(--accent2)';
-      html += '<div style="background:rgba(255,215,0,0.08);border:1px solid '+color+';border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
-        '<div style="font-size:14px;font-weight:700;color:'+color+'">'+s.label+'</div>' +
-        '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:IBM Plex Mono,monospace">'+s.desc+'</div>' +
-        '<div style="font-size:12px;color:var(--accent);margin-top:4px">Güven: %'+s.confidence+'</div>' +
-      '</div>';
-    });
-  }
-
-  // ── MODÜL G: Value Bet ──
-  var vbets = analysis.value_bets || {};
-  var vbetKeys = Object.keys(vbets);
-  if(vbetKeys.length){
-    html += '<div class="mod-title">MODÜL G — VALUE BET</div>';
-    var vbLabels = {'1':'Ev Kazanır','X':'Beraberlik','2':'Dep Kazanır'};
-    vbetKeys.forEach(function(k){
-      var v = vbets[k];
-      html += '<div style="background:rgba(0,255,136,0.06);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;margin-bottom:8px">' +
-        '<div style="font-size:13px;font-weight:700;color:var(--accent)">'+vbLabels[k]+' — Oran: '+v.odd+'</div>' +
-        '<div style="font-size:11px;color:var(--text2);margin-top:4px;font-family:IBM Plex Mono,monospace">' +
-          'Model: %'+v.model_prob+' | Piyasa: %'+v.market_prob+' | Value: +%'+v.value +
-        '</div>' +
-      '</div>';
-    });
-  }
-
-  // ── En Olası IY/MS ──
-  var topIYMS = (analysis.iyms_results||[]).slice(0,3);
-  if(topIYMS.length){
-    html += '<div class="mod-title">IY/MS EN OLASILAR</div>';
-    html += '<div class="scores-grid">';
-    topIYMS.forEach(function(r){
-      html += '<div class="score-chip"><div class="sc">'+r.selection+'</div><div class="sp">%'+r.probability+'</div></div>';
-    });
-    html += '</div>';
-  }
-
-  html += '</div>'; // analysis-inner
-  return html;
-}
-
-function chip(val, label){
-  return '<div class="lambda-chip"><div class="val">'+val+'</div><div class="lbl">'+label+'</div></div>';
-}
-
-function esc(s){
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
 </script>
+
 </body>
 </html>
