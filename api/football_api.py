@@ -37,32 +37,30 @@ def cap_def(v): return max(0.4, min(2.5, v))
 
 # ─── SOFASCORE: FIXTURES ──────────────────────────────────────────────────────
 def get_fixtures_sofascore(date):
-    """Sofascore'dan günlük fikstür çek (UTC+3 için önceki gün de dahil)"""
+    """Sofascore'dan günlük fikstür çek"""
     try:
-        # Türkiye UTC+3 — önceki günün geç maçları da bu tarihte olabilir
         prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        next_date = (datetime.strptime(date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
         all_events = []
-        for d in [prev_date, date]:
+        seen_ids = set()
+        for d in [prev_date, date, next_date]:
             r = requests.get(
                 f"{SOFA_URL}/sport/football/scheduled-events/{d}",
                 headers=SOFA_HEADERS, timeout=15
             )
             if r.status_code == 200:
-                all_events.extend(r.json().get("events", []))
+                for e in r.json().get("events", []):
+                    eid = e.get("id")
+                    if eid not in seen_ids:
+                        seen_ids.add(eid)
+                        # Sofascore'un kendi tarihini kullan (UTC+3 dönüşümü yok)
+                        ts = e.get("startTimestamp", 0)
+                        local_dt = datetime.utcfromtimestamp(ts + 10800)
+                        e["_local_date"] = local_dt.strftime("%Y-%m-%d")
+                        all_events.append(e)
 
-        # Sadece istenen tarihe ait maçları filtrele (UTC+3) + duplicate temizle
-        seen_ids = set()
-        filtered = []
-        for e in all_events:
-            eid = e.get("id")
-            if eid in seen_ids:
-                continue
-            seen_ids.add(eid)
-            ts = e.get("startTimestamp", 0)
-            local_dt = datetime.utcfromtimestamp(ts + 10800)  # UTC+3
-            if local_dt.strftime("%Y-%m-%d") == date:
-                filtered.append(e)
-        events = filtered
+        events = [e for e in all_events if e.get("_local_date") == date]
+        print(f"Sofascore: {len(all_events)} toplam, {len(events)} filtered ({date})")
         result = []
         for e in events:
             home = e.get("homeTeam", {})
