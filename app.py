@@ -257,7 +257,15 @@ def clear_cache():
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
         os.makedirs(cache_dir, exist_ok=True)
-    return jsonify({"status": "ok", "message": "Cache temizlendi"})
+    # Cache temizlendikten sonra bugunku fixture hemen yeniden cek
+    try:
+        today = datetime.now().strftime("%Y-%m-%d")
+        fixtures = get_fixtures(today)
+        fixtures.sort(key=lambda x: x.get("time") or "")
+        cache.set(f"fixtures_{today}", fixtures)
+        return jsonify({"status": "ok", "message": f"Cache temizlendi, {len(fixtures)} mac yeniden yuklendi"})
+    except Exception as e:
+        return jsonify({"status": "ok", "message": f"Cache temizlendi (fixture yuklenemedi: {str(e)})"})
 
 
 @app.route("/api/debug-stats")
