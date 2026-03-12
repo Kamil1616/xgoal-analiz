@@ -85,9 +85,24 @@ def get_fixtures_sofascore(date):
             if status_type == "finished":
                 st = "FT"
             elif status_type == "inprogress":
-                st = "1H"
+                st = "LIVE"
             else:
                 st = "NS"
+
+            # Dakika hesapla (canlı maçlar için)
+            elapsed_min = None
+            if status_type == "inprogress":
+                status_desc = status.get("description", "")
+                # Sofascore bazen direkt dakika verir: "43'" veya "67'"
+                import re as _re
+                m_min = _re.search(r'(\d+)', status_desc)
+                if m_min:
+                    elapsed_min = int(m_min.group(1))
+                else:
+                    # startTimestamp'tan hesapla
+                    import time as _time
+                    elapsed_secs = _time.time() - ts
+                    elapsed_min = max(1, min(90, int(elapsed_secs / 60)))
 
             # Saat (UTC+3 Türkiye = +10800 saniye)
             ts = e.get("startTimestamp", 0)
@@ -104,7 +119,7 @@ def get_fixtures_sofascore(date):
                 "date": date,
                 "time": match_time,
                 "status": st,
-                "elapsed": status.get("description"),
+                "elapsed": elapsed_min,
                 "home_team_id": home.get("id"),
                 "home_team_name": home.get("name"),
                 "away_team_id": away.get("id"),
