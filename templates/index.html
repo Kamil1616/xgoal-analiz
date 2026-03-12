@@ -251,6 +251,29 @@ fetch('/api/dates')
     loadDate(currentDate);
   });
 
+// ─── CANLI MAÇ OTOMATİK YENİLEME ────────────────────────────────────────────
+setInterval(function() {
+  var today = new Date().toISOString().split('T')[0];
+  if(currentDate !== today) return;
+  // Canlı maç var mı kontrol et
+  var hasLive = allFixtures.some(function(f) { return f.status === 'LIVE'; });
+  if(!hasLive) return;
+  // Fixture listesini yenile (sadece skorlar/dakika güncellenir)
+  fetch('/api/fixtures?date=' + currentDate)
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      var updated = data.fixtures || [];
+      // Sadece canlı maçların verisini güncelle
+      updated.forEach(function(f) {
+        var idx = allFixtures.findIndex(function(x){ return x.fixture_id === f.fixture_id; });
+        if(idx >= 0) allFixtures[idx] = f;
+      });
+      renderFixtures(allFixtures);
+      updateStatsBar(allFixtures);
+    })
+    .catch(function(){});
+}, 60000); // 60 saniyede bir
+
 // ─── PRE-ANALYZE ALL ─────────────────────────────────────────────────────────
 var preAnalyzeRunning = false;
 var analyzeQueue = [];
