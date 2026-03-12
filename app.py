@@ -17,8 +17,21 @@ from models.value_hunting import run_analysis
 
 
 def get_fixtures_for_date(date_str):
-    """Sofascore formatı zaten düzgün - direkt kullan"""
-    cached = cache.get(f"fixtures_{date_str}", ttl_minutes=30)
+    """Bugün: her zaman taze çek. Geçmiş/gelecek: 30 dk cache."""
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if date_str != today:
+        # Geçmiş veya gelecek gün — cache kullan
+        cached = cache.get(f"fixtures_{date_str}", ttl_minutes=30)
+        if cached:
+            return cached
+        fixtures = get_fixtures(date_str)
+        fixtures.sort(key=lambda x: x.get("time") or "")
+        cache.set(f"fixtures_{date_str}", fixtures)
+        return fixtures
+
+    # Bugün — canlı maç olabilir, 1 dk cache
+    cached = cache.get(f"fixtures_{date_str}", ttl_minutes=1)
     if cached:
         return cached
     fixtures = get_fixtures(date_str)
@@ -267,6 +280,33 @@ def api_debug_stats():
         "lambda_home": lh, "lambda_away": la,
         "lambda_total": round(lh+la, 3), "lambda_iy": liy
     })
+
+@app.route("/api/test-sportoto")
+def api_test_sportoto():
+    """Spor Toto API test"""
+    import requests
+    urls = [
+        "https://webapi.sportoto.gov.tr/api/sporttoto/list",
+        "https://webapi.sportoto.gov.tr/sporttoto/list",
+        "https://webapi.sportoto.gov.tr/api/list",
+        "https://webapi.sportoto.gov.tr/api/sporttoto/currentweek",
+        "https://webapi.sportoto.gov.tr/api/sporttoto/week",
+    ]
+    results = {}
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=8, headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json",
+                "Referer": "https://www.sportoto.gov.tr/"
+            })
+            results[url.split("/")[-1]] = {
+                "status": r.status_code,
+                "preview": r.text[:200] if r.status_code == 200 else r.text[:100]
+            }
+        except Exception as e:
+            results[url.split("/")[-1]] = {"error": str(e)}
+    return jsonify(results)
 
 @app.route("/api/test-sofascore")
 def api_test_sofascore():
