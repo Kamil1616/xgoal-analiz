@@ -90,23 +90,26 @@ def get_fixtures_sofascore(date):
                 st = "NS"
 
             # Dakika hesapla (canlı maçlar için)
+            # Sofascore status_code: 6=1.yarı, 7=2.yarı, 60=devre arası, 31=uzatma
+            # time_obj: currentPeriodStartTimestamp + initial (saniye) = periyot başlangıcı
             elapsed_min = None
             if status_type == "inprogress":
+                import time as _time
                 time_obj = e.get("time", {})
-                played = time_obj.get("played")
-                current = time_obj.get("current")
-                # status_code: 6=1.yarı, 7=devre arası, 8=2.yarı, 31=uzatma
-                if status_code == 7:
-                    # Devre arası — HT göster
+                period_start = time_obj.get("currentPeriodStartTimestamp")
+                initial = time_obj.get("initial", 0)  # saniye cinsinden (2700=45dk)
+
+                if status_desc and "halftime" in status_desc.lower():
                     elapsed_min = "HT"
-                elif played is not None:
-                    elapsed_min = int(played)
-                elif current is not None:
-                    elapsed_min = int(current)
+                elif period_start:
+                    # Periyot içinde geçen dakika
+                    elapsed_secs = _time.time() - period_start
+                    period_min = int(elapsed_secs / 60)
+                    # initial: 0=1.yarı başı, 2700=2.yarı başı (45dk)
+                    initial_min = int(initial / 60)
+                    elapsed_min = max(1, min(120, initial_min + period_min))
                 else:
-                    import time as _time
-                    elapsed_secs = _time.time() - e.get("startTimestamp", _time.time())
-                    elapsed_min = max(1, min(120, int(elapsed_secs / 60)))
+                    elapsed_min = None
 
             # Saat (UTC+3 Türkiye = +10800 saniye)
             ts = e.get("startTimestamp", 0)
