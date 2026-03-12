@@ -92,17 +92,19 @@ def get_fixtures_sofascore(date):
             # Dakika hesapla (canlı maçlar için)
             elapsed_min = None
             if status_type == "inprogress":
-                status_desc = status.get("description", "")
-                # Sofascore bazen direkt dakika verir: "43'" veya "67'"
-                import re as _re
-                m_min = _re.search(r'(\d+)', status_desc)
-                if m_min:
-                    elapsed_min = int(m_min.group(1))
+                # Sofascore'da dakika: e["time"]["played"] veya e["time"]["current"]
+                time_obj = e.get("time", {})
+                played = time_obj.get("played")
+                current = time_obj.get("current")
+                if played is not None:
+                    elapsed_min = int(played)
+                elif current is not None:
+                    elapsed_min = int(current)
                 else:
-                    # startTimestamp'tan hesapla
+                    # Son çare: startTimestamp farkından hesapla
                     import time as _time
-                    elapsed_secs = _time.time() - ts
-                    elapsed_min = max(1, min(90, int(elapsed_secs / 60)))
+                    elapsed_secs = _time.time() - e.get("startTimestamp", _time.time())
+                    elapsed_min = max(1, min(120, int(elapsed_secs / 60)))
 
             # Saat (UTC+3 Türkiye = +10800 saniye)
             ts = e.get("startTimestamp", 0)
