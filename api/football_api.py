@@ -1,450 +1,218 @@
-import os
+"""
+Sofascore API — Fikstür + Takım İstatistik Çekici
+"""
 import requests
-from datetime import datetime, timedelta
-import time
+import datetime
+from typing import Optional
 
-# ─── API KEYS ─────────────────────────────────────────────────────────────────
-AS_KEY = os.environ.get("ALLSPORTS_KEY", "")
-AS_URL = "https://apiv2.allsportsapi.com/football"
+BASE = "https://api.sofascore.com/api/v1"
 
-LIG_ORT = 1.35
-
-SOFA_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Android 11; Mobile; rv:109.0) Gecko/109.0 Firefox/109.0",
-    "Accept": "application/json, text/plain, */*",
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Android 14; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0",
+    "Referer":    "https://www.sofascore.com/",
+    "Accept":     "application/json, text/plain, */*",
     "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
-    "Referer": "https://www.sofascore.com/",
-    "Origin": "https://www.sofascore.com",
-    "Cache-Control": "no-cache",
+    "Origin":     "https://www.sofascore.com",
 }
-SOFA_URL = "https://api.sofascore.com/api/v1"
 
-# ─── DEFAULT STATS ────────────────────────────────────────────────────────────
-def default_stats():
-    return {
-        "home_attack": 1.0, "home_defence": 1.0,
-        "away_attack": 1.0, "away_defence": 1.0,
-        "general": {
-            "avg_scored": 1.35, "goals_scored": 27, "goals_conceded": 20,
-            "btts_rate": 0.45, "ht_goal_ratio": 0.27, "tempo_score": 2.5
-        },
-        "home": {"avg_scored": 1.5, "goals_scored": 15, "goals_conceded": 10},
-        "away": {"avg_scored": 1.1, "goals_scored": 12, "goals_conceded": 14}
-    }
+TIMEOUT = 12
 
-def cap_att(v): return max(0.3, min(2.5, v))
-def cap_def(v): return max(0.4, min(2.5, v))
 
-# ─── SOFASCORE: FIXTURES ──────────────────────────────────────────────────────
-def get_fixtures_sofascore(date):
-    """Sofascore'dan günlük fikstür çek (UTC+3 için önceki gün de dahil)"""
+def _get(url: str, params: dict = None) -> Optional[dict]:
     try:
-        # Türkiye UTC+3 — önceki günün geç maçları da bu tarihte olabilir
-        prev_date = (datetime.strptime(date, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-        all_events = []
-        for d in [prev_date, date]:
-            r = requests.get(
-                f"{SOFA_URL}/sport/football/scheduled-events/{d}",
-                headers=SOFA_HEADERS, timeout=15
-            )
-            if r.status_code == 200:
-                all_events.extend(r.json().get("events", []))
+        r = requests.get(url, headers=HEADERS, params=params, timeout=TIMEOUT)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print(f"[Sofascore] GET hata: {url} → {e}")
+    return None
 
-        # Sadece istenen tarihe ait maçları filtrele (UTC+3) + duplicate temizle
-        seen_ids = set()
-        filtered = []
-        for e in all_events:
-            eid = e.get("id")
-            if eid in seen_ids:
-                continue
-            seen_ids.add(eid)
-            ts = e.get("startTimestamp", 0)
-            local_dt = datetime.utcfromtimestamp(ts + 10800)  # UTC+3
-            if local_dt.strftime("%Y-%m-%d") == date:
-                filtered.append(e)
-        events = filtered
-        result = []
-        for e in events:
-            home = e.get("homeTeam", {})
-            away = e.get("awayTeam", {})
-            tournament = e.get("tournament", {})
-            unique_tournament = tournament.get("uniqueTournament", {})
-            status = e.get("status", {})
-            status_code = status.get("code", 0)
-            status_type = status.get("type", "notstarted")
 
-            # Skor
-            home_score = e.get("homeScore", {})
-            away_score = e.get("awayScore", {})
-            home_goals = home_score.get("current")
-            away_goals = away_score.get("current")
-            home_ht = home_score.get("period1")
-            away_ht = away_score.get("period1")
+# ────────────────────────────────────────────────────────────────────────────
+# FİKSTÜR
+# ────────────────────────────────────────────────────────────────────────────
 
-            # Status map
-            if status_type == "finished":
-                st = "FT"
-            elif status_type == "inprogress":
-                st = "LIVE"
-            else:
-                st = "NS"
+def get_fixtures_by_date(date_str: str) -> list[dict]:
+    """
+    Verilen tarihteki tüm futbol maçlarını döndürür.
+    date_str: 'YYYY-MM-DD'
+    """
+    url  = f"{BASE}/sport/football/scheduled-events/{date_str}"
+    data = _get(url)
+    if not data or "events" not in data:
+        return []
 
-            # Dakika hesapla
-            elapsed_min = None
-            if status_type == "inprogress":
-                import time as _time
-                time_obj = e.get("time", {})
-                period_start = time_obj.get("currentPeriodStartTimestamp")
-                initial = time_obj.get("initial", 0)
-                status_desc = status.get("description", "").lower()
-                if "halftime" in status_desc:
-                    elapsed_min = "HT"
-                elif period_start:
-                    secs = _time.time() - period_start
-                    elapsed_min = max(1, min(120, int(initial / 60) + int(secs / 60)))
+    matches = []
+    for ev in data["events"]:
+        try:
+            home = ev["homeTeam"]["name"]
+            away = ev["awayTeam"]["name"]
+            home_id = ev["homeTeam"]["id"]
+            away_id = ev["awayTeam"]["id"]
+            match_id = ev["id"]
 
-            # Saat (UTC+3 Türkiye = +10800 saniye)
-            ts = e.get("startTimestamp", 0)
-            try:
-                local_dt = datetime.utcfromtimestamp(ts + 10800)
-                match_time = local_dt.strftime("%Y-%m-%dT%H:%M:%S+03:00")
-                local_date = local_dt.strftime("%Y-%m-%d")
-            except:
-                match_time = f"{date}T00:00:00+03:00"
-                local_date = date
+            tournament = ev.get("tournament", {})
+            league_name = tournament.get("name", "")
+            category = tournament.get("category", {}).get("name", "")
+            league_full = f"{category} — {league_name}" if category else league_name
 
-            result.append({
-                "fixture_id": e.get("id"),
-                "date": date,
-                "time": match_time,
-                "status": st,
-                "elapsed": elapsed_min,
-                "home_team_id": home.get("id"),
-                "home_team_name": home.get("name"),
-                "away_team_id": away.get("id"),
-                "away_team_name": away.get("name"),
-                "home_goals": home_goals,
-                "away_goals": away_goals,
-                "home_ht_goals": home_ht,
-                "away_ht_goals": away_ht,
-                "league_id": unique_tournament.get("id"),
-                "league_name": tournament.get("name"),
-                "country": unique_tournament.get("category", {}).get("name", ""),
-                "season": str(datetime.now().year),
+            slug = ev.get("tournament", {}).get("category", {}).get("flag", "")
+            status_code = ev.get("status", {}).get("code", 0)
+
+            # Başlamamış maçlar (code 0 = not started)
+            timestamp = ev.get("startTimestamp", 0)
+            dt = datetime.datetime.utcfromtimestamp(timestamp)
+            match_time = dt.strftime("%H:%M")
+
+            matches.append({
+                "match_id":   match_id,
+                "home_team":  home,
+                "away_team":  away,
+                "home_id":    home_id,
+                "away_id":    away_id,
+                "league":     league_full,
+                "time":       match_time,
+                "status":     status_code,
+                "timestamp":  timestamp,
             })
-        # UCL ve büyük Avrupa turnuvaları için ek çekim
-        UCL_SEASON_IDS = {
-            7: 63814,    # UEFA Champions League 2025/26
-            679: 63816,  # UEFA Europa League 2025/26
-        }
-        for tid, sid in UCL_SEASON_IDS.items():
-            try:
-                r = requests.get(
-                    f"{SOFA_URL}/unique-tournament/{tid}/season/{sid}/events/last/0",
-                    headers=SOFA_HEADERS, timeout=10
-                )
-                if r.status_code == 200:
-                    for e in r.json().get("events", []):
-                        eid = e.get("id")
-                        if eid in seen_ids:
-                            continue
-                        ts2 = e.get("startTimestamp", 0)
-                        local_dt2 = datetime.utcfromtimestamp(ts2 + 10800)
-                        if local_dt2.strftime("%Y-%m-%d") == date:
-                            seen_ids.add(eid)
-                            filtered.append(e)
-                            # Bu maçı da result'a ekle
-                            home2 = e.get("homeTeam", {})
-                            away2 = e.get("awayTeam", {})
-                            t2 = e.get("tournament", {})
-                            ut2 = t2.get("uniqueTournament", {})
-                            st2 = e.get("status", {})
-                            st2_type = st2.get("type", "notstarted")
-                            hs2 = e.get("homeScore", {})
-                            as2 = e.get("awayScore", {})
-                            ft2 = "FT" if st2_type == "finished" else ("1H" if st2_type == "inprogress" else "NS")
-                            mt2 = local_dt2.strftime("%Y-%m-%dT%H:%M:%S+03:00")
-                            result.append({
-                                "fixture_id": eid,
-                                "date": date,
-                                "time": mt2,
-                                "status": ft2,
-                                "elapsed": st2.get("description"),
-                                "home_team_id": home2.get("id"),
-                                "home_team_name": home2.get("name"),
-                                "away_team_id": away2.get("id"),
-                                "away_team_name": away2.get("name"),
-                                "home_goals": hs2.get("current"),
-                                "away_goals": as2.get("current"),
-                                "home_ht_goals": hs2.get("period1"),
-                                "away_ht_goals": as2.get("period1"),
-                                "league_id": ut2.get("id"),
-                                "league_name": t2.get("name"),
-                                "country": ut2.get("category", {}).get("name", ""),
-                                "season": str(datetime.now().year),
-                            })
-            except Exception as ex:
-                print(f"UCL fetch error: {ex}")
+        except (KeyError, TypeError):
+            continue
 
-        print(f"Sofascore fixtures: {len(result)} maç ({date})")
-        return result
-    except Exception as e:
-        print(f"Sofascore fixtures error: {e}")
+    # Saate göre sırala
+    matches.sort(key=lambda x: x["timestamp"])
+    return matches
+
+
+def get_live_fixtures() -> list[dict]:
+    """Canlı maçları döndürür."""
+    url  = f"{BASE}/sport/football/events/live"
+    data = _get(url)
+    if not data or "events" not in data:
         return []
 
-def get_fixtures(date):
-    """Ana fixture fonksiyonu: Sofascore → AllSports"""
-    fixtures = get_fixtures_sofascore(date)
-    if fixtures:
-        return fixtures
-    # Yedek: AllSports
-    return get_fixtures_allsports(date)
+    matches = []
+    for ev in data["events"]:
+        try:
+            matches.append({
+                "match_id":  ev["id"],
+                "home_team": ev["homeTeam"]["name"],
+                "away_team": ev["awayTeam"]["name"],
+                "home_id":   ev["homeTeam"]["id"],
+                "away_id":   ev["awayTeam"]["id"],
+                "league":    ev.get("tournament", {}).get("name", ""),
+                "time":      ev.get("status", {}).get("description", "Canlı"),
+                "status":    ev.get("status", {}).get("code", 6),
+                "timestamp": ev.get("startTimestamp", 0),
+            })
+        except (KeyError, TypeError):
+            continue
+    return matches
 
-# ─── SOFASCORE: TAKIM ID BULMA ────────────────────────────────────────────────
-_team_id_cache = {}
 
-def get_sofascore_team_id(team_name):
-    """Takım adından Sofascore team ID bul"""
-    if team_name in _team_id_cache:
-        return _team_id_cache[team_name]
+# ────────────────────────────────────────────────────────────────────────────
+# TAKIM İSTATİSTİKLERİ
+# ────────────────────────────────────────────────────────────────────────────
+
+def _parse_event_stats(event: dict, team_id: int) -> Optional[dict]:
+    """Tek bir maç eventinden gol bilgisi çıkarır."""
     try:
-        r = requests.get(
-            f"{SOFA_URL}/search/all",
-            params={"q": team_name},
-            headers=SOFA_HEADERS, timeout=10
-        )
-        if r.status_code != 200:
-            return None
-        results = r.json().get("results", [])
-        # Önce tam eşleşme ara
-        name_lower = team_name.lower()
-        for item in results:
-            if item.get("type") == "team":
-                entity = item.get("entity", {})
-                if entity.get("sport", {}).get("slug") == "football":
-                    ename = entity.get("name", "").lower()
-                    if ename == name_lower or name_lower in ename or ename in name_lower:
-                        tid = entity.get("id")
-                        _team_id_cache[team_name] = tid
-                        return tid
-        # İlk football takımını döndür
-        for item in results:
-            if item.get("type") == "team":
-                entity = item.get("entity", {})
-                if entity.get("sport", {}).get("slug") == "football":
-                    tid = entity.get("id")
-                    _team_id_cache[team_name] = tid
-                    return tid
-        return None
-    except Exception as e:
-        print(f"Sofascore team search error: {e}")
-        return None
+        home_id    = event["homeTeam"]["id"]
+        home_score = event.get("homeScore", {}).get("current", 0) or 0
+        away_score = event.get("awayScore", {}).get("current", 0) or 0
 
-# ─── SOFASCORE: TAKIM SON MAÇLARı ─────────────────────────────────────────────
-def get_sofascore_events(team_id, page=0):
-    """Sofascore'dan takımın son maçlarını çek"""
-    try:
-        r = requests.get(
-            f"{SOFA_URL}/team/{team_id}/events/last/{page}",
-            headers=SOFA_HEADERS, timeout=10
-        )
-        if r.status_code != 200:
-            return []
-        return r.json().get("events", [])
-    except Exception as e:
-        print(f"Sofascore events error: {e}")
-        return []
-
-def stats_from_sofascore(events, team_id, fixture_id=None):
-    """Sofascore maç verilerinden stats hesapla"""
-    home_scored, home_conceded = [], []
-    away_scored, away_conceded = [], []
-    scored_all, conceded_all, ht_scored_all = [], [], []
-
-    # Kupa kelime listesi - bu turnuvalar filtrelenecek
-    CUP_KEYWORDS = ["cup", "kupa", "copa", "coupe", "pokal", "supercup", "super cup", 
-                    "fa cup", "league cup", "carabao", "friendly", "hazirlik", "superliga cup"]
-    
-    finished = []
-    for e in events:
-        if e.get("status", {}).get("type") != "finished":
-            continue
-        # Kupa maçlarını filtrele
-        t_name = e.get("tournament", {}).get("name", "").lower()
-        is_cup = any(kw in t_name for kw in CUP_KEYWORDS)
-        if is_cup:
-            continue
-        finished.append(e)
-    
-    # Analiz edilecek maçı listeden çıkar (bugünkü maç dahil olmasın)
-    if fixture_id:
-        finished = [e for e in finished if e.get("id") != fixture_id]
-    finished = sorted(finished, key=lambda x: x.get("startTimestamp", 0))[-6:]
-
-    for m in finished:
-        home_team = m.get("homeTeam", {})
-        is_home = home_team.get("id") == team_id
-        hs = m.get("homeScore", {})
-        as_ = m.get("awayScore", {})
-
-        ft_h = hs.get("current")
-        ft_a = as_.get("current")
-        ht_h = hs.get("period1")
-        ht_a = as_.get("period1")
-
-        if ft_h is None or ft_a is None:
-            continue
-
-        gf = ft_h if is_home else ft_a
-        ga = ft_a if is_home else ft_h
-        ht_gf = (ht_h if is_home else ht_a) or 0
-
-        scored_all.append(gf)
-        conceded_all.append(ga)
-        ht_scored_all.append(ht_gf)
-
-        if is_home:
-            home_scored.append(gf)
-            home_conceded.append(ga)
+        if team_id == home_id:
+            return {"goals_scored": home_score, "goals_conceded": away_score,
+                    "is_home": True,
+                    "result": "W" if home_score > away_score else ("D" if home_score == away_score else "L")}
         else:
-            away_scored.append(gf)
-            away_conceded.append(ga)
-
-    if len(scored_all) < 3:
+            return {"goals_scored": away_score, "goals_conceded": home_score,
+                    "is_home": False,
+                    "result": "W" if away_score > home_score else ("D" if home_score == away_score else "L")}
+    except (KeyError, TypeError):
         return None
 
-    avg_sh = sum(home_scored) / max(len(home_scored), 1)
-    avg_sa = sum(away_scored) / max(len(away_scored), 1)
-    avg_ch = sum(home_conceded) / max(len(home_conceded), 1)
-    avg_ca = sum(away_conceded) / max(len(away_conceded), 1)
-    avg_st = sum(scored_all) / len(scored_all)
-    avg_ct = sum(conceded_all) / len(conceded_all)
-    btts = sum(1 for s, c in zip(scored_all, conceded_all) if s > 0 and c > 0) / len(scored_all)
-    total_ft = sum(scored_all)
-    ht_ratio = max(0.15, min(0.42, sum(ht_scored_all) / total_ft if total_ft > 0 else 0.27))
 
-    h_att = cap_att(avg_sh / LIG_ORT if avg_sh > 0 else 1.0)
-    h_def = cap_def(avg_ch / LIG_ORT if avg_ch > 0 else 1.0)
-    a_att = cap_att(avg_sa / LIG_ORT if avg_sa > 0 else 1.0)
-    a_def = cap_def(avg_ca / LIG_ORT if avg_ca > 0 else 1.0)
-
-    # Ham maç listesi
-    recent_matches = []
-    for m in finished:
-        home_team = m.get("homeTeam", {})
-        away_team = m.get("awayTeam", {})
-        hs = m.get("homeScore", {})
-        as_ = m.get("awayScore", {})
-        recent_matches.append({
-            "date": datetime.utcfromtimestamp(m.get("startTimestamp", 0)).strftime("%Y-%m-%d"),
-            "home_team": home_team.get("name"),
-            "away_team": away_team.get("name"),
-            "score": f"{hs.get('current', '?')} - {as_.get('current', '?')}",
-            "ht_score": f"{hs.get('period1', '?')} - {as_.get('period1', '?')}",
-            "tournament": m.get("tournament", {}).get("name", ""),
-        })
-
-    print(f"Sofascore stats [{team_id}]: h_att={h_att:.3f} h_def={h_def:.3f} a_att={a_att:.3f} a_def={a_def:.3f} maç={len(scored_all)}")
-
-    return {
-        "home_attack":  round(h_att, 4),
-        "home_defence": round(h_def, 4),
-        "away_attack":  round(a_att, 4),
-        "away_defence": round(a_def, 4),
-        "general": {
-            "avg_scored": avg_st, "goals_scored": sum(scored_all),
-            "goals_conceded": sum(conceded_all), "btts_rate": btts,
-            "ht_goal_ratio": ht_ratio, "tempo_score": avg_st + avg_ct
-        },
-        "home": {"avg_scored": avg_sh, "goals_scored": sum(home_scored), "goals_conceded": sum(home_conceded)},
-        "away": {"avg_scored": avg_sa, "goals_scored": sum(away_scored), "goals_conceded": sum(away_conceded)},
-        "recent_matches": recent_matches,
-    }
-
-def get_team_stats_sofascore(team_name, sofa_team_id=None, fixture_id=None):
-    """Sofascore'dan takım stats çek"""
-    try:
-        team_id = sofa_team_id or get_sofascore_team_id(team_name)
-        if not team_id:
-            print(f"Sofascore: {team_name} bulunamadı")
-            return None
-        time.sleep(0.3)  # Rate limit
-        events = get_sofascore_events(team_id, 0)
-        if len(events) < 3:
-            events2 = get_sofascore_events(team_id, 1)
-            events = events2 + events
-        if len(events) < 3:
-            print(f"Sofascore: {team_name} yetersiz maç ({len(events)})")
-            return None
-        return stats_from_sofascore(events, team_id, fixture_id=fixture_id)
-    except Exception as e:
-        print(f"Sofascore team stats error: {e}")
-        return None
-
-# ─── ALLSPORTS: FIXTURE YEDEK ────────────────────────────────────────────────
-def get_fixtures_allsports(date):
-    try:
-        r = requests.get(AS_URL, params={
-            "met": "Fixtures", "APIkey": AS_KEY, "from": date, "to": date
-        }, timeout=30)
-        if r.status_code != 200:
-            return []
-        matches = r.json().get("result", []) or []
-        result = []
-        for m in matches:
-            home_goals = away_goals = home_ht_goals = away_ht_goals = None
-            final = m.get("event_final_result", "")
-            if final and " - " in final:
-                parts = final.split(" - ")
-                try:
-                    home_goals = int(parts[0].strip())
-                    away_goals = int(parts[1].strip())
-                except: pass
-            ht = m.get("event_halftime_result", "")
-            if ht and " - " in ht:
-                ht_parts = ht.split(" - ")
-                try:
-                    home_ht_goals = int(ht_parts[0].strip())
-                    away_ht_goals = int(ht_parts[1].strip())
-                except: pass
-            status_raw = str(m.get("event_status", ""))
-            if status_raw == "Finished": status = "FT"
-            elif "'" in status_raw: status = "1H"
-            else: status = "NS"
-            result.append({
-                "fixture_id": int(m.get("event_key", 0)),
-                "date": date,
-                "time": m.get("event_date", date) + "T" + m.get("event_time", "00:00") + ":00+01:00",
-                "status": status,
-                "home_team_id": int(m.get("home_team_key", 0)),
-                "home_team_name": m.get("event_home_team", ""),
-                "away_team_id": int(m.get("away_team_key", 0)),
-                "away_team_name": m.get("event_away_team", ""),
-                "home_goals": home_goals,
-                "away_goals": away_goals,
-                "home_ht_goals": home_ht_goals,
-                "away_ht_goals": away_ht_goals,
-                "league_id": int(m.get("league_key", 0)),
-                "league_name": m.get("league_name", ""),
-                "country": m.get("country_name", ""),
-                "season": m.get("league_year", str(datetime.now().year)),
-            })
-        return result
-    except Exception as e:
-        print(f"AllSports fixtures error: {e}")
+def get_team_last_matches(team_id: int, limit: int = 6) -> list[dict]:
+    """Son N genel maç."""
+    url  = f"{BASE}/team/{team_id}/events/last/0"
+    data = _get(url)
+    if not data or "events" not in data:
         return []
 
-# ─── ANA STATS FONKSİYONU ────────────────────────────────────────────────────
-def get_team_stats(team_id, league_id, season, team_name=None, sofa_team_id=None, fixture_id=None):
-    """
-    Öncelik: Sofascore → Default
-    """
-    # Sofascore dene
-    if team_name or sofa_team_id:
-        stats = get_team_stats_sofascore(team_name, sofa_team_id, fixture_id=fixture_id)
-        if stats:
-            print(f"✓ Sofascore stats: {team_name}")
-            return stats
+    events = data["events"][-limit:]
+    results = []
+    for ev in events:
+        parsed = _parse_event_stats(ev, team_id)
+        if parsed:
+            results.append(parsed)
+    return results
 
-    print(f"⚠ Default stats: {team_name or team_id}")
-    return default_stats()
+
+def get_team_home_matches(team_id: int, limit: int = 6) -> list[dict]:
+    """Son N iç saha maçı."""
+    all_matches = _get_all_last(team_id, pages=3)
+    home = [m for m in all_matches if m.get("is_home")]
+    return home[-limit:]
+
+
+def get_team_away_matches(team_id: int, limit: int = 6) -> list[dict]:
+    """Son N deplasman maçı."""
+    all_matches = _get_all_last(team_id, pages=3)
+    away = [m for m in all_matches if not m.get("is_home")]
+    return away[-limit:]
+
+
+def _get_all_last(team_id: int, pages: int = 3) -> list[dict]:
+    """Birden fazla sayfa geçmişi toplar."""
+    all_events = []
+    for page in range(pages):
+        url  = f"{BASE}/team/{team_id}/events/last/{page}"
+        data = _get(url)
+        if not data or "events" not in data:
+            break
+        for ev in data["events"]:
+            parsed = _parse_event_stats(ev, team_id)
+            if parsed:
+                all_events.append(parsed)
+        if not data.get("hasNextPage", False) and page > 0:
+            break
+    return all_events
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# TAKIM ARAMA
+# ────────────────────────────────────────────────────────────────────────────
+
+def search_team(name: str) -> Optional[int]:
+    """Takım adından ID bul."""
+    url  = f"{BASE}/search/multi/{requests.utils.quote(name)}"
+    data = _get(url)
+    if not data:
+        return None
+    for item in data.get("results", []):
+        if item.get("type") == "team":
+            return item["entity"]["id"]
+    return None
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# TOPLU VERİ ÇEKME (bir maç için 4 veri seti)
+# ────────────────────────────────────────────────────────────────────────────
+
+def get_match_data(home_id: int, away_id: int) -> dict:
+    """
+    Ev sahibi ve deplasman için 4 veri setini çeker:
+    - home_general, home_venue (iç saha)
+    - away_general, away_venue (deplasman)
+    """
+    home_general = get_team_last_matches(home_id, 6)
+    home_venue   = get_team_home_matches(home_id, 6)
+    away_general = get_team_last_matches(away_id, 6)
+    away_venue   = get_team_away_matches(away_id, 6)
+
+    return {
+        "home_general": home_general,
+        "home_venue":   home_venue,
+        "away_general": away_general,
+        "away_venue":   away_venue,
+    }
