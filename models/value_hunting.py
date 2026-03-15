@@ -1,351 +1,347 @@
+"""
+Value Hunting Model - 12 Adımlı Futbol Tahmin Motoru
+Payout: %92 (marj: %8)
+"""
 import math
+import statistics
+from typing import Optional
 
-# ─── SABITLER ─────────────────────────────────────────────────────────────────
-DC_RHO = -0.14
-LIG_ORT = 1.25        # Genel lig ortalaması
-EV_AVANTAJI = 1.08    # Ev avantajı katsayısı
+# ─── SABITLER ───────────────────────────────────────────────────────────────
+PAYOUT       = 0.92   # %8 marj
+LEAGUE_AVG   = 1.20   # Lig ortalama gol/maç (normalize tabanı)
+HOME_ADV     = 1.15   # Ev sahibi avantajı çarpanı
+DC_RHO       = -0.13  # Dixon-Coles korelasyon parametresi
+MAX_GOALS    = 8      # Skor matris boyutu
+W_GENERAL    = 0.50   # Genel form ağırlığı
+W_VENUE      = 0.50   # İç/dış saha form ağırlığı
+IY_RATIO     = 0.47   # İlk yarı gol oranı (toplam golün ~%47'si)
 
-# ─── SINYAL EŞİKLERİ ──────────────────────────────────────────────────────────
-SIGNAL_THRESHOLDS = {"0.5": 0.87, "1.5": 0.80, "2.5": 0.65, "3.5": 0.55}
-MS_SIGNAL_THRESHOLDS = {"1": 0.60, "X": 0.38, "2": 0.55}
-FT_OVER_THRESHOLDS = {"1.5": 0.90, "2.5": 0.80, "3.5": 0.70}
 
-# ─── TEMEL FONKSIYONLAR ───────────────────────────────────────────────────────
-def poisson_prob(lam, k):
-    if lam <= 0:
-        return 1.0 if k == 0 else 0.0
-    return (math.exp(-lam) * (lam ** k)) / math.factorial(k)
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 1 — Veri normalizasyonu (ham istatistiklerden)
+# ════════════════════════════════════════════════════════════════════════════
+def normalize_stats(matches: list[dict]) -> dict:
+    """
+    Ham maç listesinden temel istatistikleri çıkarır.
+    Her eleman: {"goals_scored": int, "goals_conceded": int, "result": "W/D/L"}
+    """
+    if not matches:
+        return {"attack": 1.0, "defense": 1.0, "avg_scored": LEAGUE_AVG,
+                "avg_conceded": LEAGUE_AVG, "scores": [], "variance": 0.5}
 
-def dixon_coles_correction(home_goals, away_goals, lambda_home, lambda_away, rho=DC_RHO):
-    if home_goals == 0 and away_goals == 0:
-        return 1 - lambda_home * lambda_away * rho
-    elif home_goals == 0 and away_goals == 1:
-        return 1 + lambda_home * rho
-    elif home_goals == 1 and away_goals == 0:
-        return 1 + lambda_away * rho
-    elif home_goals == 1 and away_goals == 1:
-        return 1 - rho
+    scored    = [m["goals_scored"]    for m in matches]
+    conceded  = [m["goals_conceded"]  for m in matches]
+    total_g   = [s + c for s, c in zip(scored, conceded)]
+
+    avg_scored    = statistics.mean(scored)    if scored    else LEAGUE_AVG
+    avg_conceded  = statistics.mean(conceded)  if conceded  else LEAGUE_AVG
+
+    variance = statistics.stdev(total_g) if len(total_g) > 1 else 0.5
+
+    return {
+        "attack":        avg_scored   / LEAGUE_AVG,
+        "defense":       avg_conceded / LEAGUE_AVG,
+        "avg_scored":    avg_scored,
+        "avg_conceded":  avg_conceded,
+        "scores":        list(zip(scored, conceded)),
+        "variance":      variance,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 2 — Poisson Lambda Hesabı
+# ════════════════════════════════════════════════════════════════════════════
+def compute_lambdas(home_general: dict, home_venue: dict,
+                    away_general: dict, away_venue: dict) -> tuple[float, float]:
+    """
+    λ_home ve λ_away hesapla.
+    Genel + venue istatistiklerini ağırlıklı ortalama ile birleştirir.
+    """
+    # Hücum gücü: genel + venue ağırlıklı
+    home_attack  = W_GENERAL * home_general["attack"]  + W_VENUE * home_venue["attack"]
+    home_defense = W_GENERAL * home_general["defense"] + W_VENUE * home_venue["defense"]
+    away_attack  = W_GENERAL * away_general["attack"]  + W_VENUE * away_venue["attack"]
+    away_defense = W_GENERAL * away_general["defense"] + W_VENUE * away_venue["defense"]
+
+    lambda_home = home_attack  * away_defense * HOME_ADV * LEAGUE_AVG
+    lambda_away = away_attack  * home_defense * LEAGUE_AVG
+
+    # Gol farkı düzeltmesi
+    home_net = home_general["avg_scored"] - home_general["avg_conceded"]
+    away_net = away_general["avg_scored"] - away_general["avg_conceded"]
+    net_diff = (home_net - away_net) * 0.05  # küçük etki
+
+    lambda_home = max(0.3, lambda_home + net_diff)
+    lambda_away = max(0.3, lambda_away - net_diff)
+
+    return round(lambda_home, 4), round(lambda_away, 4)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 3 — Dixon-Coles Düzeltmesi
+# ════════════════════════════════════════════════════════════════════════════
+def dixon_coles_tau(x: int, y: int, lh: float, la: float, rho: float) -> float:
+    if x == 0 and y == 0: return 1 - lh * la * rho
+    if x == 1 and y == 0: return 1 + la * rho
+    if x == 0 and y == 1: return 1 + lh * rho
+    if x == 1 and y == 1: return 1 - rho
     return 1.0
 
-def score_matrix(lambda_home, lambda_away, max_goals=8):
-    matrix = {}
-    for h in range(max_goals + 1):
-        for a in range(max_goals + 1):
-            p = poisson_prob(lambda_home, h) * poisson_prob(lambda_away, a)
-            p *= dixon_coles_correction(h, a, lambda_home, lambda_away)
-            matrix[(h, a)] = p
-    total = sum(matrix.values())
+def poisson_pmf(k: int, lam: float) -> float:
+    if lam <= 0: return 0.0
+    try:
+        return math.exp(-lam) * (lam ** k) / math.factorial(k)
+    except (OverflowError, ValueError):
+        return 0.0
+
+def build_score_matrix(lh: float, la: float) -> list[list[float]]:
+    matrix = [[0.0] * (MAX_GOALS + 1) for _ in range(MAX_GOALS + 1)]
+    total = 0.0
+    for i in range(MAX_GOALS + 1):
+        for j in range(MAX_GOALS + 1):
+            tau = dixon_coles_tau(i, j, lh, la, DC_RHO)
+            val = poisson_pmf(i, lh) * poisson_pmf(j, la) * tau
+            matrix[i][j] = max(0.0, val)
+            total += matrix[i][j]
     if total > 0:
-        matrix = {k: v / total for k, v in matrix.items()}
+        for i in range(MAX_GOALS + 1):
+            for j in range(MAX_GOALS + 1):
+                matrix[i][j] /= total
     return matrix
 
-# ─── LAMBDA HESAPLAMA ─────────────────────────────────────────────────────────
-def compute_lambdas(home_stats, away_stats):
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 4 — Form Ağırlığı (Lambda kaydırma)
+# ════════════════════════════════════════════════════════════════════════════
+def apply_form_weight(lh: float, la: float,
+                      home_general: dict, away_general: dict) -> tuple[float, float]:
     """
-    Dixon-Coles standart formülü - ÇAPRAZ KULLANIM:
-      λ_home = home_attack × away_defence × LIG_ORT × EV_AVANTAJI
-      λ_away = away_attack × home_defence × LIG_ORT
-
-    home_attack  = ev takımı evde gol atma (lig ort=1.0)
-    home_defence = ev takımı evde gol yeme (lig ort=1.0)
-    away_attack  = dep takımı deplasmanda gol atma (lig ort=1.0)
-    away_defence = dep takımı deplasmanda gol yeme (lig ort=1.0)
-
-    Ev atacak: home_attack × away_defence (dep ne kadar yiyor?)
-    Dep atacak: away_attack × home_defence (ev ne kadar yiyor?)
+    Son 6 maç form sapmasını lambda'ya yansıt.
     """
-    h_att = home_stats.get("home_attack", 1.0)
-    h_def = home_stats.get("home_defence", 1.0)
-    a_att = away_stats.get("away_attack", 1.0)
-    a_def = away_stats.get("away_defence", 1.0)
+    home_form_attack  = home_general["attack"]
+    away_form_attack  = away_general["attack"]
 
-    lambda_home = h_att * a_def * LIG_ORT * EV_AVANTAJI
-    lambda_away = a_att * h_def * LIG_ORT
+    # Poisson çekirdeğindeki saldırı baz değeri
+    home_base = (lh / HOME_ADV) / LEAGUE_AVG
+    away_base = la / LEAGUE_AVG
 
-    lambda_home = max(0.30, min(3.50, lambda_home))
-    lambda_away = max(0.20, min(3.50, lambda_away))
+    home_deviation = home_form_attack - home_base
+    away_deviation = away_form_attack - away_base
 
-    return round(lambda_home, 3), round(lambda_away, 3)
+    SHIFT_CAP = 0.15
+    home_shift = max(-SHIFT_CAP, min(SHIFT_CAP, home_deviation * 0.3))
+    away_shift = max(-SHIFT_CAP, min(SHIFT_CAP, away_deviation * 0.3))
 
-def compute_lambda_iy(lambda_home, lambda_away, home_stats, away_stats):
-    lambda_total = lambda_home + lambda_away
-    ht_home = home_stats.get("general", {}).get("ht_goal_ratio", 0.28)
-    ht_away = away_stats.get("general", {}).get("ht_goal_ratio", 0.28)
-    ht_ratio = (ht_home + ht_away) / 2
-    ht_ratio = max(0.18, min(0.48, ht_ratio))
-    lambda_iy = lambda_total * ht_ratio
-    btts = (home_stats.get("general", {}).get("btts_rate", 0.45) +
-            away_stats.get("general", {}).get("btts_rate", 0.45)) / 2
-    if btts > 0.65:
-        lambda_iy *= 1.06
-    elif btts < 0.30:
-        lambda_iy *= 0.94
-    return round(lambda_iy, 3)
+    lh_adj = max(0.3, lh + home_shift * LEAGUE_AVG)
+    la_adj = max(0.3, la + away_shift * LEAGUE_AVG)
 
-# ─── OLASILIK HESAPLAMALARI ───────────────────────────────────────────────────
-def compute_halftime_probs(lambda_home, lambda_away, lambda_iy):
-    total = lambda_home + lambda_away
-    lh_iy = lambda_iy * (lambda_home / total) if total > 0 else lambda_iy / 2
-    la_iy = lambda_iy * (lambda_away / total) if total > 0 else lambda_iy / 2
-    ht_probs = {"1": 0, "X": 0, "2": 0}
-    for h in range(7):
-        for a in range(7):
-            p = poisson_prob(lh_iy, h) * poisson_prob(la_iy, a)
-            p *= dixon_coles_correction(h, a, lh_iy, la_iy)
-            if h > a:    ht_probs["1"] += p
-            elif h == a: ht_probs["X"] += p
-            else:        ht_probs["2"] += p
-    total_ht = sum(ht_probs.values())
-    if total_ht > 0:
-        ht_probs = {k: v / total_ht for k, v in ht_probs.items()}
-    return ht_probs
+    return round(lh_adj, 4), round(la_adj, 4)
 
-def compute_iyms_probs(lambda_home, lambda_away, lambda_iy):
-    ft_matrix = score_matrix(lambda_home, lambda_away)
-    ht_probs = compute_halftime_probs(lambda_home, lambda_away, lambda_iy)
-    ft_probs = {"1": 0, "X": 0, "2": 0}
-    for (h, a), p in ft_matrix.items():
-        if h > a:    ft_probs["1"] += p
-        elif h == a: ft_probs["X"] += p
-        else:        ft_probs["2"] += p
-    iyms = {}
-    for ht in ["1", "X", "2"]:
-        for ft in ["1", "X", "2"]:
-            raw = ht_probs[ht] * ft_probs[ft]
-            if (ht == "1" and ft == "2") or (ht == "2" and ft == "1"):
-                raw *= 0.45   # Skor dönüşü çok nadir
-            elif ht == ft:
-                raw *= 1.40   # Aynı yönde devam en olası
-            elif ft == "X":
-                raw *= 0.85   # Berabere biten
-            else:
-                raw *= 0.80   # X'ten dönüş
-            iyms[f"{ht}/{ft}"] = raw
-    total = sum(iyms.values())
-    if total > 0:
-        iyms = {k: v / total for k, v in iyms.items()}
-    return iyms
 
-def compute_ms_probs(lambda_home, lambda_away):
-    ft_matrix = score_matrix(lambda_home, lambda_away)
-    probs = {"1": 0, "X": 0, "2": 0}
-    for (h, a), p in ft_matrix.items():
-        if h > a:    probs["1"] += p
-        elif h == a: probs["X"] += p
-        else:        probs["2"] += p
-    return probs
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 5 — Gol Varyansı
+# ════════════════════════════════════════════════════════════════════════════
+def compute_volatility(home_general: dict, away_general: dict) -> dict:
+    hv = home_general["variance"]
+    av = away_general["variance"]
+    combined = (hv + av) / 2
 
-def compute_iy_over_probs(lambda_iy):
-    def p_at_least(lam, k):
-        return 1 - sum(poisson_prob(lam, i) for i in range(k))
+    if combined < 0.8:   level = "low"
+    elif combined < 1.5: level = "medium"
+    else:                level = "high"
+
     return {
-        "0.5": p_at_least(lambda_iy, 1),
-        "1.5": p_at_least(lambda_iy, 2),
-        "2.5": p_at_least(lambda_iy, 3),
-        "3.5": p_at_least(lambda_iy, 4),
+        "home_variance": round(hv, 3),
+        "away_variance": round(av, 3),
+        "combined":      round(combined, 3),
+        "level":         level,
     }
 
-def compute_ft_over_probs(lambda_total):
-    def p_at_least(lam, k):
-        return 1 - sum(poisson_prob(lam, i) for i in range(k))
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 6 — Game State Dependency
+# ════════════════════════════════════════════════════════════════════════════
+def game_state_factor(home_general: dict, away_general: dict) -> float:
+    """
+    İlk gol sonrası maç kilitleniyor mu, hızlanıyor mu?
+    Yüksek atılan gol + yüksek yenilen gol → açık maç → lambda yukarı
+    """
+    avg_total_home = home_general["avg_scored"] + home_general["avg_conceded"]
+    avg_total_away = away_general["avg_scored"] + away_general["avg_conceded"]
+    avg_total = (avg_total_home + avg_total_away) / 2
+
+    # 2.4 lig ortalaması referans
+    factor = 1.0 + (avg_total - 2.4) * 0.04
+    return max(0.90, min(1.10, round(factor, 4)))
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 7 — Scoreline Cluster Analysis
+# ════════════════════════════════════════════════════════════════════════════
+def scoreline_clusters(matrix: list[list[float]]) -> dict:
+    low   = sum(matrix[i][j] for i in range(2) for j in range(2))        # 0-0,1-0,0-1,1-1
+    mid   = sum(matrix[i][j] for i in range(2, 4) for j in range(2, 4))  # 2-2,3-3 bölgesi
+    high  = 1.0 - low - mid
+
     return {
-        "1.5": p_at_least(lambda_total, 2),
-        "2.5": p_at_least(lambda_total, 3),
-        "3.5": p_at_least(lambda_total, 4),
+        "low_score":  round(low,  4),
+        "mid_score":  round(mid,  4),
+        "high_score": round(max(0, high), 4),
     }
 
-# ─── VALUE BET ────────────────────────────────────────────────────────────────
-def compute_value_bet(ms_probs, odds_home, odds_draw, odds_away):
-    results = {}
-    market_map = {"1": odds_home, "X": odds_draw, "2": odds_away}
-    for outcome, odd in market_map.items():
-        if not odd or odd <= 0:
-            continue
-        market_prob = 1 / odd
-        model_prob = ms_probs.get(outcome, 0)
-        value = model_prob - market_prob
-        if value > 0.05:
-            results[outcome] = {
-                "model_prob": round(model_prob * 100, 1),
-                "market_prob": round(market_prob * 100, 1),
-                "value": round(value * 100, 1),
-                "odd": odd
-            }
-    return results
 
-# ─── SİNYALLER ────────────────────────────────────────────────────────────────
-def get_iy_signals(iy_over_probs):
-    signals = []
-    for market, prob in iy_over_probs.items():
-        if prob >= SIGNAL_THRESHOLDS.get(market, 1.0):
-            signals.append({
-                "market": f"IY {market} Ust",
-                "probability": round(prob * 100, 1),
-                "signal": "Guclu Sinyal"
-            })
-    return signals
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 8 — Pazar Olasılıkları
+# ════════════════════════════════════════════════════════════════════════════
+def compute_market_probs(matrix: list[list[float]],
+                         lh: float, la: float) -> dict:
+    p_home = p_draw = p_away = 0.0
+    for i in range(MAX_GOALS + 1):
+        for j in range(MAX_GOALS + 1):
+            if i > j:  p_home += matrix[i][j]
+            elif i == j: p_draw += matrix[i][j]
+            else:       p_away += matrix[i][j]
 
-def get_ft_over_signals(ft_over_probs):
-    signals = []
-    for market, prob in ft_over_probs.items():
-        if prob >= FT_OVER_THRESHOLDS.get(market, 1.0):
-            signals.append({
-                "market": f"MS {market} Ust",
-                "probability": round(prob * 100, 1),
-                "signal": "Guclu Sinyal"
-            })
-    return signals
+    # İlk yarı lambda (Poisson ölçekleme)
+    lh_iy = lh * IY_RATIO
+    la_iy = la * IY_RATIO
 
-def get_ms_signals(ms_probs):
-    signals = []
-    labels = {"1": "Ev Kazanir", "X": "Beraberlik", "2": "Dep Kazanir"}
-    for outcome, prob in ms_probs.items():
-        if prob >= MS_SIGNAL_THRESHOLDS.get(outcome, 1.0):
-            signals.append({
-                "outcome": outcome,
-                "label": labels[outcome],
-                "probability": round(prob * 100, 1),
-                "model_odd": round((1 / prob) * 0.90, 2) if prob > 0 else 999,
-                "signal": "Guclu Sinyal"
-            })
-    return signals
-
-def get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away):
-    signals = []
-    iy05 = iy_over_probs.get("0.5", 0)
-    iy15 = iy_over_probs.get("1.5", 0)
-    lam_diff = lambda_home - lambda_away
-
-    if iy05 >= 0.90 and iy15 >= 0.80 and lambda_total >= 4:
-        signals.append({
-            "type": "COMBO",
-            "label": "🔥 GÜÇLÜ GOL SİNYALİ",
-            "desc": f"IY 0.5 %{round(iy05*100,1)} + IY 1.5 %{round(iy15*100,1)} + λ={round(lambda_total,2)}",
-            "confidence": 92
-        })
-    if lam_diff >= 1.5:
-        signals.append({
-            "type": "HOME_FAV",
-            "label": "⚡ EV FAVORİ",
-            "desc": f"λ fark: {round(lam_diff,2)} (Ev çok güçlü)",
-            "confidence": round(79 + (lam_diff - 1.5) * 3, 1)
-        })
-    elif lam_diff <= -1.5:
-        signals.append({
-            "type": "AWAY_FAV",
-            "label": "⚡ DEPLASMAN FAVORİ",
-            "desc": f"λ fark: {round(abs(lam_diff),2)} (Deplasman çok güçlü)",
-            "confidence": round(79 + (abs(lam_diff) - 1.5) * 3, 1)
-        })
-    return signals
-
-# ─── IY+MS SKOR KOMBİNASYONLARI ──────────────────────────────────────────────
-def compute_iyms_score_combos(lambda_home, lambda_away, lambda_iy):
-    total = lambda_home + lambda_away
-    lh_iy = lambda_iy * (lambda_home / total) if total > 0 else lambda_iy / 2
-    la_iy = lambda_iy * (lambda_away / total) if total > 0 else lambda_iy / 2
-
-    combos = {}
-    for ht_h in range(5):
-        for ht_a in range(5):
-            p_ht = poisson_prob(lh_iy, ht_h) * poisson_prob(la_iy, ht_a)
-            p_ht *= dixon_coles_correction(ht_h, ht_a, lh_iy, la_iy)
-            for add_h in range(6):
-                for add_a in range(6):
-                    ft_h = ht_h + add_h
-                    ft_a = ht_a + add_a
-                    p_add = poisson_prob(lambda_home * 0.55, add_h) * poisson_prob(lambda_away * 0.55, add_a)
-                    p = p_ht * p_add
-                    if p > 0.001:
-                        key = f"IY {ht_h}-{ht_a} / MS {ft_h}-{ft_a}"
-                        combos[key] = combos.get(key, 0) + p
-
-    total_p = sum(combos.values())
-    if total_p > 0:
-        combos = {k: v / total_p for k, v in combos.items()}
-
-    top3 = sorted(combos.items(), key=lambda x: x[1], reverse=True)[:3]
-    return [{"combo": k, "probability": round(v * 100, 2)} for k, v in top3]
-
-# ─── ANA ANALİZ FONKSİYONU ───────────────────────────────────────────────────
-def run_analysis(home_stats_general, home_stats_home, away_stats_general, away_stats_away,
-                 home_stats=None, away_stats=None,
-                 odds_home=None, odds_draw=None, odds_away=None):
-
-    if home_stats is None:
-        home_stats = {
-            "home_attack": home_stats_home["avg_scored"] / LIG_ORT,
-            "home_defence": home_stats_home.get("goals_conceded", 10) / max(home_stats_home.get("goals_scored", 10), 1),
-            "away_attack": away_stats_general["avg_scored"] / LIG_ORT,
-            "away_defence": away_stats_general.get("goals_conceded", 20) / max(away_stats_general.get("goals_scored", 20), 1),
-            "general": home_stats_general
-        }
-    if away_stats is None:
-        away_stats = {
-            "home_attack": home_stats_general["avg_scored"] / LIG_ORT,
-            "home_defence": home_stats_general.get("goals_conceded", 20) / max(home_stats_general.get("goals_scored", 20), 1),
-            "away_attack": away_stats_away["avg_scored"] / LIG_ORT,
-            "away_defence": away_stats_away.get("goals_conceded", 12) / max(away_stats_away.get("goals_scored", 12), 1),
-            "general": away_stats_general
-        }
-
-    lambda_home, lambda_away = compute_lambdas(home_stats, away_stats)
-    lambda_total = lambda_home + lambda_away
-    lambda_iy = compute_lambda_iy(lambda_home, lambda_away, home_stats, away_stats)
-
-    iyms_probs = compute_iyms_probs(lambda_home, lambda_away, lambda_iy)
-    sorted_iyms = sorted(iyms_probs.items(), key=lambda x: x[1], reverse=True)
-    iyms_results = []
-    for i, (selection, prob) in enumerate(sorted_iyms):
-        fair_odd = 1 / prob if prob > 0 else 999
-        iyms_results.append({
-            "rank": i + 1,
-            "selection": selection,
-            "probability": round(prob * 100, 2),
-            "model_odd": round(fair_odd * 0.90, 2),
-            "site_odd": None,
-            "status": None,
-            "divider": i == 4
-        })
-
-    iy_over_probs = compute_iy_over_probs(lambda_iy)
-    ft_over_probs = compute_ft_over_probs(lambda_total)
-    ms_probs = compute_ms_probs(lambda_home, lambda_away)
-
-    ms_results = [
-        {"outcome": o, "probability": round(ms_probs[o] * 100, 1),
-         "model_odd": round((1 / ms_probs[o]) * 0.90, 2) if ms_probs[o] > 0 else 999}
-        for o in ["1", "X", "2"]
-    ]
-
-    ft_matrix = score_matrix(lambda_home, lambda_away)
-    top_scores = sorted(ft_matrix.items(), key=lambda x: x[1], reverse=True)[:3]
-    score_probs = {f"{h}-{a}": round(p * 100, 1) for (h, a), p in top_scores}
-
-    iyms_combos = compute_iyms_score_combos(lambda_home, lambda_away, lambda_iy)
-    combo_signals = get_combo_signal(iy_over_probs, lambda_total, lambda_home, lambda_away)
-
-    value_bets = {}
-    if odds_home or odds_draw or odds_away:
-        value_bets = compute_value_bet(ms_probs, odds_home, odds_draw, odds_away)
-
-    ft_over_signals = get_ft_over_signals(ft_over_probs)
+    # İY 0.5 üst = en az 1 gol atılması
+    p_iy05_under = poisson_pmf(0, lh_iy) * poisson_pmf(0, la_iy)
+    p_iy05_over  = 1.0 - p_iy05_under
 
     return {
-        "lambda_home": round(lambda_home, 3),
-        "lambda_away": round(lambda_away, 3),
-        "lambda_total": round(lambda_total, 3),
-        "lambda_iy": round(lambda_iy, 3),
-        "iyms_results": iyms_results,
-        "iy_over_probs": {k: round(v * 100, 1) for k, v in iy_over_probs.items()},
-        "ft_over_probs": {k: round(v * 100, 1) for k, v in ft_over_probs.items()},
-        "iy_signals": get_iy_signals(iy_over_probs),
-        "ft_over_signals": ft_over_signals,
-        "ms_results": ms_results,
-        "ms_signals": get_ms_signals(ms_probs),
-        "combo_signals": combo_signals,
-        "value_bets": value_bets,
-        "score_probs": score_probs,
-        "iyms_combos": iyms_combos,
-        "data_warning": False,
+        "1":        round(p_home, 5),
+        "X":        round(p_draw, 5),
+        "2":        round(p_away, 5),
+        "iy05_over":  round(p_iy05_over, 5),
+        "iy05_under": round(p_iy05_under, 5),
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ADIM 9 — Adil Oran → Marjlı Oran (%92 payout)
+# ════════════════════════════════════════════════════════════════════════════
+def prob_to_odds(prob: float, payout: float = PAYOUT) -> float:
+    if prob <= 0.01:
+        return 99.0
+    fair_odd    = 1.0 / prob
+    margin_odd  = fair_odd / payout
+    return round(margin_odd, 2)
+
+def apply_margin(probs: dict) -> dict:
+    odds = {}
+    for key in ["1", "X", "2"]:
+        odds[key] = prob_to_odds(probs[key])
+    return odds
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# ANA FONKSİYON — Tam model pipeline
+# ════════════════════════════════════════════════════════════════════════════
+def run_value_hunting(
+    home_general_matches: list[dict],
+    home_venue_matches:   list[dict],
+    away_general_matches: list[dict],
+    away_venue_matches:   list[dict],
+) -> dict:
+    """
+    Tüm 12 adımı çalıştırır.
+    Girdi: son 6 genel + son 6 iç/dış saha maç listesi (her takım için)
+    Çıktı: tahminler, oranlar, güven skoru, meta bilgiler
+    """
+
+    # 1 — Normalize
+    hg = normalize_stats(home_general_matches)
+    hv = normalize_stats(home_venue_matches)
+    ag = normalize_stats(away_general_matches)
+    av = normalize_stats(away_venue_matches)
+
+    # 2 — Lambda hesabı
+    lh, la = compute_lambdas(hg, hv, ag, av)
+
+    # 4 — Form ağırlığı
+    lh, la = apply_form_weight(lh, la, hg, ag)
+
+    # 5 — Varyans
+    volatility = compute_volatility(hg, ag)
+
+    # 6 — Game state
+    gs_factor = game_state_factor(hg, ag)
+    lh = round(lh * gs_factor, 4)
+    la = round(la * gs_factor, 4)
+
+    # 3 — Dixon-Coles skor matrisi
+    matrix = build_score_matrix(lh, la)
+
+    # 7 — Scoreline clusters
+    clusters = scoreline_clusters(matrix)
+
+    # 8 — Pazar olasılıkları
+    probs = compute_market_probs(matrix, lh, la)
+
+    # 9 — Marjlı oranlar
+    odds = apply_margin(probs)
+
+    # Güven skoru: en yüksek 1X2 olasılığı + düşük varyans bonusu
+    max_prob = max(probs["1"], probs["X"], probs["2"])
+    var_bonus = {"low": 3, "medium": 0, "high": -3}[volatility["level"]]
+    confidence = min(99, round(max_prob * 100 + var_bonus))
+
+    # Kazanan tahmini
+    if probs["1"] >= probs["X"] and probs["1"] >= probs["2"]:
+        prediction = "1"
+    elif probs["2"] >= probs["X"]:
+        prediction = "2"
+    else:
+        prediction = "X"
+
+    return {
+        # Ana tahmin
+        "prediction": prediction,
+        "confidence": confidence,
+
+        # 1X2 olasılıkları (yüzde)
+        "prob_home": round(probs["1"] * 100, 1),
+        "prob_draw": round(probs["X"] * 100, 1),
+        "prob_away": round(probs["2"] * 100, 1),
+
+        # 1X2 marjlı oranlar
+        "odd_home": odds["1"],
+        "odd_draw": odds["X"],
+        "odd_away": odds["2"],
+
+        # İY 0.5 üst
+        "iy05_over_pct":   round(probs["iy05_over"]  * 100, 1),
+        "iy05_under_pct":  round(probs["iy05_under"] * 100, 1),
+
+        # Meta
+        "lambda_home":  lh,
+        "lambda_away":  la,
+        "volatility":   volatility,
+        "clusters":     clusters,
+        "gs_factor":    gs_factor,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# FALLBACK — Veri yoksa makul varsayılan
+# ════════════════════════════════════════════════════════════════════════════
+def fallback_result() -> dict:
+    return {
+        "prediction": "1",
+        "confidence": 40,
+        "prob_home": 40.0,
+        "prob_draw": 28.0,
+        "prob_away": 32.0,
+        "odd_home": 2.50,
+        "odd_draw": 3.45,
+        "odd_away": 3.00,
+        "iy05_over_pct":  62.0,
+        "iy05_under_pct": 38.0,
+        "lambda_home": 1.20,
+        "lambda_away": 1.00,
+        "volatility": {"level": "medium", "combined": 1.0},
+        "clusters": {"low_score": 0.35, "mid_score": 0.35, "high_score": 0.30},
+        "gs_factor": 1.0,
     }
